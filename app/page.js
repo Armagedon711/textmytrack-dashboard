@@ -5,14 +5,19 @@ import { useEffect, useState } from "react";
 export default function Home() {
   const [requests, setRequests] = useState([]);
 
-  // Load mock data (later replaced with n8n)
+  // Load data from API
   useEffect(() => {
     async function load() {
       const res = await fetch("/api/requests");
       const data = await res.json();
       setRequests(data.requests || []);
     }
+
     load();
+
+    // Refresh every 5 seconds
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -33,39 +38,50 @@ export default function Home() {
           marginTop: "20px",
         }}
       >
-        {requests.map((req) => (
-          <div
-            key={req.id}
-            style={{
-              padding: "20px",
-              borderRadius: "12px",
-              background: "#0f172a",
-              border: "1px solid #1e293b",
-            }}
-          >
-            <h2 style={{ margin: 0 }}>
-              {req.title}{" "}
-              <span style={{ opacity: 0.6 }}>
-                — {req.artist}
-              </span>
-            </h2>
+        {requests.map((request) => {
+          // ⭐ Convert UTC timestamp → Viewer Local Time
+          const localTime = new Date(request.requestedAt).toLocaleTimeString(
+            [],
+            {
+              hour: "numeric",
+              minute: "2-digit",
+            }
+          );
 
-            <div style={{ marginTop: "10px", opacity: 0.7 }}>
-              Genre: {req.genre} • Energy: {req.energy} • Mood:{" "}
-              {req.mood}
-            </div>
-
+          return (
             <div
+              key={request.id}
               style={{
-                marginTop: "10px",
-                fontSize: "12px",
-                opacity: 0.6,
+                padding: "20px",
+                borderRadius: "12px",
+                background: "#0f172a",
+                border: "1px solid #1e293b",
               }}
             >
-              Requested by: {req.requestedBy} at {req.requestedAt}
+              <h2 style={{ margin: 0 }}>
+                {request.title}{" "}
+                <span style={{ opacity: 0.6 }}>
+                  — {request.artist}
+                </span>
+              </h2>
+
+              <div style={{ marginTop: "10px", opacity: 0.7 }}>
+                Genre: {request.genre} • Energy: {request.energy} • Mood:{" "}
+                {request.mood}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  fontSize: "12px",
+                  opacity: 0.6,
+                }}
+              >
+                Requested by: {request.requestedBy} at {localTime}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </main>
   );
