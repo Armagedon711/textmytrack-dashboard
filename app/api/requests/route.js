@@ -3,7 +3,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
-// --- SAFE ADMIN CLIENT SETUP ---
+// SAFE admin client creation
 let supabaseAdmin = null;
 
 if (
@@ -16,7 +16,7 @@ if (
   );
 }
 
-// GET — return only logged-in DJ’s requests
+// ---------- GET ----------
 export async function GET() {
   try {
     if (!supabaseAdmin) {
@@ -26,7 +26,9 @@ export async function GET() {
       );
     }
 
-    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+    const supabase = createRouteHandlerClient({
+      cookies: () => cookies()
+    });
 
     const {
       data: { user },
@@ -52,7 +54,7 @@ export async function GET() {
   }
 }
 
-// POST — TEMPORARY INSERT FROM n8n
+// ---------- POST ----------
 export async function POST(request) {
   try {
     if (!supabaseAdmin) {
@@ -63,6 +65,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
+
     const {
       title,
       artist,
@@ -75,6 +78,7 @@ export async function POST(request) {
       dj_id,
     } = body;
 
+    // Validation
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
       return NextResponse.json(
         { error: "Missing required fields" },
