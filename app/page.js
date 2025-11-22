@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { ArrowRight, Check, X, Music } from "lucide-react";
 
 export default function Dashboard() {
+  const supabase = supabaseBrowserClient(); // ✅ FIXED
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch initial data
   async function fetchRequests() {
-    const { data } = await fetch("/api/requests").then((res) => res.json());
-    setRequests(data || []);
+    const res = await fetch("/api/requests");
+    const json = await res.json();
+    setRequests(json.requests || []);
     setLoading(false);
   }
 
@@ -24,21 +26,17 @@ export default function Dashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "requests" },
-        (payload) => {
-          fetchRequests();
-        }
+        () => fetchRequests()
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // Update status
   async function updateStatus(id, status) {
     await fetch("/api/requests-status", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
 
@@ -74,7 +72,6 @@ export default function Dashboard() {
               key={req.id}
               className="bg-[#141420] p-5 rounded-xl border border-[#1e1e2d] shadow-glow hover:shadow-lg transition-all"
             >
-              {/* Song Header */}
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-semibold">
                   {req.title} —{" "}
@@ -96,7 +93,6 @@ export default function Dashboard() {
                 </span>
               </div>
 
-              {/* Song Details */}
               <p className="text-gray-300 mb-2">
                 Genre:{" "}
                 <span className="text-brand-purple font-medium">
@@ -112,14 +108,12 @@ export default function Dashboard() {
                 </span>
               </p>
 
-              {/* Footer Info */}
               <p className="text-gray-500 text-sm mb-3">
                 Requested by{" "}
                 <span className="text-gray-300">{req.requestedBy}</span> —{" "}
                 {timeAgo(req.requestedAt)}
               </p>
 
-              {/* Buttons */}
               <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => updateStatus(req.id, "approved")}
