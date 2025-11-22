@@ -26,7 +26,7 @@ export async function GET() {
       );
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
 
     const {
       data: { user },
