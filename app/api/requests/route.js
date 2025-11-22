@@ -5,7 +5,6 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
-// SAFE admin client creation
 let supabaseAdmin = null;
 
 if (
@@ -18,17 +17,8 @@ if (
   );
 }
 
-// ---------- GET ----------
 export async function GET() {
   try {
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Supabase admin not initialized" },
-        { status: 500 }
-      );
-    }
-
-    // 👇 IMPORTANT FIX
     const supabase = createRouteHandlerClient({
       cookies: () => cookies(),
     });
@@ -57,16 +47,8 @@ export async function GET() {
   }
 }
 
-// ---------- POST ----------
 export async function POST(request) {
   try {
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Supabase admin not initialized" },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json();
 
     const {
