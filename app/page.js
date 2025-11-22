@@ -1,27 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Home() {
   const [requests, setRequests] = useState([]);
 
-  // Load data from API
-  useEffect(() => {
-    async function load() {
-      const res = await fetch("/api/requests");
-      const data = await res.json();
-      setRequests(data.requests || []);
+  // Load requests from Supabase
+  async function loadRequests() {
+    const { data, error } = await supabase
+      .from("requests")
+      .select("*")
+      .order("requestedAt", { ascending: false });
+
+    if (!error && data) {
+      setRequests(data);
     }
+  }
 
-    load();
-
-    // Refresh every 5 seconds for now (real-time coming next)
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Update request status (Approve / Played / Reject)
+  // Handle status updates (approve / played / reject)
   async function handleStatus(id, newStatus) {
     await fetch("/api/update-request", {
       method: "POST",
@@ -30,23 +28,40 @@ export default function Home() {
       },
       body: JSON.stringify({ id, status: newStatus }),
     });
-
-    // Optimistically update UI without waiting
-    setRequests((prev) =>
-      prev.map((req) =>
-        req.id === id ? { ...req, status: newStatus } : req
-      )
-    );
   }
+
+  useEffect(() => {
+    // Load on startup
+    loadRequests();
+
+    // Supabase Realtime subscription
+    const channel = supabase
+      .channel("requests-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "requests",
+        },
+        (payload) => {
+          console.log("Realtime Event:", payload);
+          loadRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <main className="p-10 font-sans text-white bg-slate-900 min-h-screen">
-      <h1 className="text-3xl font-bold mb-4">
-        🎧 TextMyTrack DJ Dashboard
-      </h1>
+      <h1 className="text-3xl font-bold mb-4">🎧 TextMyTrack DJ Dashboard</h1>
 
       <p className="opacity-70 mb-8">
-        Live song requests with AI: genre, tone, energy, explicit flag, and request history.
+        Live song requests with AI: genre, mood, energy, explicit flag, and realtime DJ controls.
       </p>
 
       <div className="flex flex-col gap-6 mt-6">
@@ -63,9 +78,7 @@ export default function Home() {
               {/* Title + Artist */}
               <h2 className="text-xl font-semibold">
                 {request.title}{" "}
-                <span className="opacity-70 text-sm">
-                  — {request.artist}
-                </span>
+                <span className="opacity-70 text-sm">— {request.artist}</span>
               </h2>
 
               {/* Metadata */}

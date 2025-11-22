@@ -1,33 +1,39 @@
-import { NextResponse } from "next/server";
-import { requests } from "../requests/route";
+import { supabase } from "@/lib/supabase";
 
-// Update a request's status
-export async function POST(req) {
-  const body = await req.json();
-  const { id, status } = body;
+export async function GET() {
+  const { data, error } = await supabase
+    .from("requests")
+    .select("*")
+    .order("requestedAt", { ascending: false });
 
-  if (!id || !status) {
-    return NextResponse.json(
-      { error: "Missing id or status" },
-      { status: 400 }
-    );
+  if (error) {
+    return Response.json({ error }, { status: 500 });
   }
 
-  // Find the request entry
-  const request = requests.find((r) => r.id === id);
+  return Response.json({ requests: data });
+}
 
-  if (!request) {
-    return NextResponse.json(
-      { error: "Request not found" },
-      { status: 404 }
-    );
+export async function POST(request) {
+  const body = await request.json();
+
+  const newEntry = {
+    id: body.id || Date.now().toString(),
+    title: body.title,
+    artist: body.artist,
+    genre: body.genre,
+    mood: body.mood,
+    energy: body.energy,
+    explicit: body.explicit,
+    requestedBy: body.requestedBy,
+    requestedAt: body.requestedAt || new Date().toISOString(),
+    status: "pending",
+  };
+
+  const { error } = await supabase.from("requests").insert([newEntry]);
+
+  if (error) {
+    return Response.json({ error }, { status: 400 });
   }
 
-  // Update the status
-  request.status = status;
-
-  return NextResponse.json({
-    success: true,
-    updated: request,
-  });
+  return Response.json({ success: true, newEntry });
 }
