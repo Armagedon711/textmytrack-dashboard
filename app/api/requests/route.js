@@ -5,6 +5,10 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
+// ❗ REMOVE INVALID IMPORT
+// import { supabase } from "@/lib/supabase";  // ❌ BREAKS ROUTE HANDLER
+
+// ---------- ADMIN CLIENT ----------
 let supabaseAdmin = null;
 
 if (
@@ -17,38 +21,55 @@ if (
   );
 }
 
+// ---------- GET ----------
 export async function GET() {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: "Supabase admin not initialized" },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Correct cookie binding
     const supabase = createRouteHandlerClient({
       cookies: () => cookies(),
     });
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data, error: userError } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !data?.user) {
       return NextResponse.json({ requests: [] });
     }
 
-    const { data, error } = await supabaseAdmin
+    const user = data.user;
+
+    const { data: requests, error } = await supabaseAdmin
       .from("requests")
       .select("*")
       .eq("dj_id", user.id)
       .order("requestedAt", { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error }, { status: 500 });
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ requests: data || [] });
+    return NextResponse.json({ requests: requests || [] });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
+// ---------- POST ----------
 export async function POST(request) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: "Supabase admin not initialized" },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
 
     const {
@@ -60,7 +81,7 @@ export async function POST(request) {
       explicit,
       requestedBy,
       requestedAt,
-      dj_id
+      dj_id,
     } = body;
 
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
@@ -73,14 +94,14 @@ export async function POST(request) {
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
       artist,
-      genre,
-      mood,
-      energy,
+      genre: genre || null,
+      mood: mood || null,
+      energy: energy || null,
       explicit: explicit ?? false,
       requestedBy,
       requestedAt,
       status: "pending",
-      dj_id
+      dj_id,
     });
 
     if (error) {
