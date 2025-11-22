@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 
-// GET — return only the logged-in DJ's requests
+// TEMP: allow n8n inserts using service role
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// GET — return only logged-in DJ’s requests
 export async function GET(request) {
   const supabase = createRouteHandlerClient({ cookies });
 
-  // Get the logged-in user
+  // Get logged-in user
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -15,8 +22,8 @@ export async function GET(request) {
     return NextResponse.json({ requests: [] });
   }
 
-  // Load only this DJ’s requests
-  const { data, error } = await supabase
+  // Load only this DJ's requests
+  const { data, error } = await supabaseAdmin
     .from("requests")
     .select("*")
     .eq("dj_id", user.id)
@@ -29,24 +36,10 @@ export async function GET(request) {
   return NextResponse.json({ requests: data || [] });
 }
 
-// POST — insert a song request for the logged-in DJ
+// POST — TEMPORARY INSERT FROM n8n (bypassing Twilio)
 export async function POST(request) {
-  const supabase = createRouteHandlerClient({ cookies });
-
-  // Logged-in DJ
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json(
-      { error: "Not logged in" },
-      { status: 401 }
-    );
-  }
-
-  // Parse request JSON
   const body = await request.json();
+
   const {
     title,
     artist,
@@ -56,18 +49,19 @@ export async function POST(request) {
     explicit,
     requestedBy,
     requestedAt,
+    dj_id   // <— manually provided from n8n for now
   } = body;
 
-  // Basic validation
-  if (!title || !artist || !requestedBy || !requestedAt) {
+  // Validation checks
+  if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
     return NextResponse.json(
       { error: "Missing required fields" },
       { status: 400 }
     );
   }
 
-  // Insert row tied to DJ ID
-  const { error } = await supabase.from("requests").insert({
+  // Insert into Supabase tied to specific DJ
+  const { error } = await supabaseAdmin.from("requests").insert({
     title,
     artist,
     genre: genre || null,
@@ -77,14 +71,11 @@ export async function POST(request) {
     requestedBy,
     requestedAt,
     status: "pending",
-    dj_id: user.id,
+    dj_id
   });
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
