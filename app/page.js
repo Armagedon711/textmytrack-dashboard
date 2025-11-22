@@ -1,140 +1,179 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { formatDistanceToNow } from "date-fns";
+import { supabaseBrowserClient } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-export default function Home() {
+export default function DashboardPage() {
+  const supabase = supabaseBrowserClient();
+  const router = useRouter();
+
+  const [user, setUser] = useState(null);
   const [requests, setRequests] = useState([]);
 
-  // Load requests from Supabase
-  async function loadRequests() {
-    const { data, error } = await supabase
-      .from("requests")
-      .select("*")
-      .order("requestedAt", { ascending: false });
-
-    if (!error && data) {
-      setRequests(data);
-    }
-  }
-
-  // Handle status updates (approve / played / reject)
-  async function handleStatus(id, newStatus) {
-    await fetch("/api/update-request", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ id, status: newStatus }),
-    });
-  }
-
+  // ───────────────────────────────────────────
+  // STEP 5 — PROTECT ROUTE: Only logged-in DJs
+  // ───────────────────────────────────────────
   useEffect(() => {
-    // Load on startup
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      setUser(user);
+    }
+
+    loadUser();
+  }, []);
+
+  // ───────────────────────────────────────────
+  // LOAD DJ REQUESTS
+  // ───────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+
+    async function loadRequests() {
+      const { data, error } = await supabase
+        .from("requests")
+        .select("*")
+        .eq("dj_id", user.id)
+        .order("requestedAt", { ascending: false });
+
+      if (!error) setRequests(data || []);
+    }
+
     loadRequests();
 
-    // Supabase Realtime subscription
+    // ───────────────────────────────────────────
+    // REALTIME LISTENER FOR THIS DJ ONLY
+    // ───────────────────────────────────────────
     const channel = supabase
-      .channel("requests-changes")
+      .channel(`requests:${user.id}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "requests",
+          filter: `dj_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log("Realtime Event:", payload);
-          loadRequests();
+          setRequests((prev) => {
+            const updated = [...prev];
+            const newRow = payload.new;
+
+            const index = updated.findIndex((r) => r.id === newRow.id);
+
+            if (index === -1) {
+              updated.unshift(newRow);
+            } else {
+              updated[index] = newRow;
+            }
+
+            return updated;
+          });
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    return () => supabase.removeChannel(channel);
+  }, [user]);
 
+  // ───────────────────────────────────────────
+  // STEP 4 — LOGOUT BUTTON
+  // ───────────────────────────────────────────
+  async function logout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
+  // ───────────────────────────────────────────
+  // TIME AGO HELPER
+  // ───────────────────────────────────────────
+  function timeAgo(dateString) {
+    const diff = Math.floor((Date.now() - new Date(dateString)) / 1000);
+
+    if (diff < 60) return "just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+
+    return `${Math.floor(diff / 86400)} days ago`;
+  }
+
+  // ───────────────────────────────────────────
+  // UPDATE STATUS (Approve / Played / Reject)
+  // ───────────────────────────────────────────
+  async function updateStatus(id, status) {
+    await supabase
+      .from("requests")
+      .update({ status })
+      .eq("id", id);
+  }
+
+  // ───────────────────────────────────────────
+  // RENDER
+  // ───────────────────────────────────────────
   return (
-    <main className="p-10 font-sans text-white bg-slate-900 min-h-screen">
-      <h1 className="text-3xl font-bold mb-4">🎧 TextMyTrack DJ Dashboard</h1>
+    <main style={{ maxWidth: "700px", margin: "20px auto", padding: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <h1>🎧 TextMyTrack DJ Dashboard</h1>
+        <button onClick={logout} style={{ height: "40px" }}>
+          Logout
+        </button>
+      </div>
 
-      <p className="opacity-70 mb-8">
-        Live song requests with AI: genre, mood, energy, explicit flag, and realtime DJ controls.
-      </p>
+      <p>Live song requests with AI: genre, mood, energy, explicit flag.</p>
 
-      <div className="flex flex-col gap-6 mt-6">
+      <div style={{ marginTop: "20px" }}>
         {requests.map((request) => {
-          const timeAgo = formatDistanceToNow(new Date(request.requestedAt), {
-            addSuffix: true,
-          });
+          const localTime = new Date(request.requestedAt).toLocaleTimeString(
+            [],
+            { hour: "numeric", minute: "2-digit" }
+          );
 
           return (
             <div
               key={request.id}
-              className="p-6 rounded-xl bg-slate-800 border border-slate-700 shadow-md"
+              style={{
+                padding: "15px",
+                marginBottom: "12px",
+                border: "1px solid #ccc",
+                borderRadius: "8px",
+              }}
             >
-              {/* Title + Artist */}
-              <h2 className="text-xl font-semibold">
-                {request.title}{" "}
-                <span className="opacity-70 text-sm">— {request.artist}</span>
-              </h2>
+              <h3>
+                {request.title} — {request.artist}
+              </h3>
+              <p>
+                Genre: {request.genre} • Energy: {request.energy} • Mood:{" "}
+                {request.mood}
+              </p>
 
-              {/* Metadata */}
-              <div className="mt-2 opacity-80 text-sm">
-                Genre: <strong>{request.genre}</strong> • Energy:{" "}
-                <strong>{request.energy}</strong> • Mood:{" "}
-                <strong>{request.mood}</strong>
-              </div>
+              <p style={{ opacity: 0.7 }}>
+                Requested by {request.requestedBy} — {timeAgo(request.requestedAt)}
+              </p>
 
-              {/* Time & requester */}
-              <div className="mt-3 text-xs opacity-60">
-                Requested by <strong>{request.requestedBy}</strong> — {timeAgo}
-              </div>
+              <p>Status: <strong>{request.status}</strong></p>
 
-              {/* Status Label */}
-              {request.status && (
-                <div className="mt-3 text-xs">
-                  Status:{" "}
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      request.status === "approved"
-                        ? "bg-green-600"
-                        : request.status === "played"
-                        ? "bg-blue-600"
-                        : request.status === "rejected"
-                        ? "bg-red-600"
-                        : "bg-slate-700"
-                    }`}
-                  >
-                    {request.status}
-                  </span>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="mt-5 flex gap-3">
-                <button
-                  onClick={() => handleStatus(request.id, "approved")}
-                  className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition"
-                >
+              <div style={{ marginTop: "8px", display: "flex", gap: "10px" }}>
+                <button onClick={() => updateStatus(request.id, "approved")}>
                   Approve
                 </button>
-
-                <button
-                  onClick={() => handleStatus(request.id, "played")}
-                  className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg text-sm font-semibold transition"
-                >
+                <button onClick={() => updateStatus(request.id, "played")}>
                   Played
                 </button>
-
-                <button
-                  onClick={() => handleStatus(request.id, "rejected")}
-                  className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-sm font-semibold transition"
-                >
+                <button onClick={() => updateStatus(request.id, "rejected")}>
                   Reject
                 </button>
+              </div>
+
+              <div style={{ marginTop: "10px", fontSize: "12px", opacity: 0.6 }}>
+                {localTime}
               </div>
             </div>
           );
