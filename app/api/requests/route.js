@@ -28,7 +28,10 @@ export async function GET() {
       );
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
+    // 👇 IMPORTANT FIX
+    const supabase = createRouteHandlerClient({
+      cookies: () => cookies(),
+    });
 
     const {
       data: { user },
@@ -78,7 +81,6 @@ export async function POST(request) {
       dj_id,
     } = body;
 
-    // Validation
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
       return NextResponse.json(
         { error: "Missing required fields" },
