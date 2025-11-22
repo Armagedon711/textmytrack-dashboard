@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
 let supabaseAdmin = null;
@@ -15,28 +17,71 @@ if (
   );
 }
 
-export async function POST(request) {
+export async function GET() {
   try {
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Supabase admin not initialized" },
-        { status: 500 }
-      );
+    const supabase = createRouteHandlerClient({
+      cookies: () => cookies(),
+    });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ requests: [] });
     }
 
-    const { id, status } = await request.json();
+    const { data, error } = await supabaseAdmin
+      .from("requests")
+      .select("*")
+      .eq("dj_id", user.id)
+      .order("requestedAt", { ascending: false });
 
-    if (!id || !status) {
+    if (error) {
+      return NextResponse.json({ error }, { status: 500 });
+    }
+
+    return NextResponse.json({ requests: data || [] });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.json();
+
+    const {
+      title,
+      artist,
+      genre,
+      mood,
+      energy,
+      explicit,
+      requestedBy,
+      requestedAt,
+      dj_id
+    } = body;
+
+    if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
       return NextResponse.json(
-        { error: "Missing id or status" },
+        { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const { error } = await supabaseAdmin
-      .from("requests")
-      .update({ status })
-      .eq("id", id);
+    const { error } = await supabaseAdmin.from("requests").insert({
+      title,
+      artist,
+      genre,
+      mood,
+      energy,
+      explicit: explicit ?? false,
+      requestedBy,
+      requestedAt,
+      status: "pending",
+      dj_id
+    });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
