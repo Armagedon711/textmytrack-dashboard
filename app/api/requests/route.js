@@ -17,7 +17,6 @@ if (
 }
 
 // ---------- GET ----------
-// TEMPORARY: no auth, just return all requests so the dashboard works
 export async function GET() {
   try {
     if (!supabaseAdmin) {
@@ -60,12 +59,13 @@ export async function POST(request) {
       genre,
       mood,
       energy,
-      explicit,
+      explicit,        // <-- NOW A STRING ("Explicit" | "Clean" | "Undetermined")
       requestedBy,
       requestedAt,
       dj_id,
     } = body;
 
+    // Validate required fields
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -73,13 +73,22 @@ export async function POST(request) {
       );
     }
 
+    // Normalize explicit field to always be a string
+    const explicitValue =
+      explicit === "Explicit" ||
+      explicit === "Clean" ||
+      explicit === "Undetermined"
+        ? explicit
+        : "Undetermined";
+
+    // Insert record
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
       artist,
       genre: genre || null,
       mood: mood || null,
       energy: energy || null,
-      explicit: explicit ?? false,
+      explicit: explicitValue,      // <-- stored as STRING
       requestedBy,
       requestedAt,
       status: "pending",
