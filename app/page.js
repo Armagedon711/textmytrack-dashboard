@@ -309,7 +309,7 @@ export default function Dashboard() {
 
                   {/* Thumbnail */}
                   <div className="flex-shrink-0">
-                    <div className="h-full aspect-square max-h-[210px] rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg">
+                    <div className="h-full aspect-square max-h-[205px] rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg">
                       {req.thumbnail ? (
                         <img
                           src={req.thumbnail}
