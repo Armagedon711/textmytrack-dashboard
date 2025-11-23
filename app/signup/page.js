@@ -45,7 +45,7 @@ export default function SignupPage() {
         
         {/* Header */}
         <div className="flex flex-col items-center mb-6">
-          <UserPlus size={40} className="text-brand-blue drop-shadow-glow" />
+          <UserPlus size={40} className="text-[#4da3ff] drop-shadow-glow" />
           <h1 className="text-3xl font-bold text-white mt-3 tracking-wide">
             Create DJ Account
           </h1>
@@ -69,26 +69,31 @@ export default function SignupPage() {
         <form onSubmit={handleSignup} className="space-y-4">
           <input
             type="email"
-            className="w-full px-4 py-3 rounded-lg bg-[#1b1b2e] border border-[#2a2a40] text-white placeholder-gray-400 focus:outline-none focus:border-brand-blue focus:shadow-glow transition"
+            className="w-full px-4 py-3 rounded-lg bg-[#1b1b2e] border border-[#2a2a40] text-white placeholder-gray-400 focus:outline-none focus:border-[#4da3ff] focus:shadow-glow transition"
             placeholder="DJ Email"
             autoComplete="email"
+            value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
 
           <input
             type="password"
-            className="w-full px-4 py-3 rounded-lg bg-[#1b1b2e] border border-[#2a2a40] text-white placeholder-gray-400 focus:outline-none focus:border-brand-blue focus:shadow-glow transition"
+            className="w-full px-4 py-3 rounded-lg bg-[#1b1b2e] border border-[#2a2a40] text-white placeholder-gray-400 focus:outline-none focus:border-[#4da3ff] focus:shadow-glow transition"
             placeholder="Password"
             autoComplete="new-password"
+            value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
 
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg bg-brand-blue text-white font-semibold 
-              hover:bg-blue-600 hover:shadow-glow transition 
-              ${loading ? "opacity-50 cursor-not-allowed" : ""}
+            style={{
+              backgroundColor: loading ? '#4da3ff80' : '#4da3ff',
+            }}
+            className={`w-full py-3 rounded-lg text-white font-semibold 
+              hover:brightness-110 hover:shadow-glow transition 
+              ${loading ? "cursor-not-allowed" : "cursor-pointer"}
             `}
           >
             {loading ? "Creating Account..." : "Sign Up"}
@@ -100,7 +105,7 @@ export default function SignupPage() {
           Already have an account?{" "}
           <a
             href="/login"
-            className="text-brand-pink hover:underline hover:text-brand-pink/80 transition"
+            className="text-[#ff4da3] hover:underline hover:brightness-90 transition"
           >
             Log in
           </a>
