@@ -37,7 +37,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-[#0a0a0f] flex items-center justify-center px-6">
       <div className="w-full max-w-md bg-[#141420cc] backdrop-blur-xl p-8 rounded-2xl border border-[#1e1e2d] shadow-glow">
-        
+
         {/* Header */}
         <div className="flex flex-col items-center mb-6">
           <Music size={40} className="text-brand-pink drop-shadow-glow" />
@@ -74,8 +74,8 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg bg-brand-pink text-white font-semibold 
-              transition shadow-lg hover:bg-pink-600 hover:shadow-glow 
+            className={`w-full py-3 rounded-lg bg-brand-pink text-white font-semibold shadow-lg 
+              transition hover:bg-pink-600 hover:shadow-glow 
               ${loading ? "opacity-50 cursor-not-allowed" : ""}
             `}
           >
