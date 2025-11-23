@@ -200,7 +200,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#ff4da3] to-[#b366ff] flex items-center gap-3">
-              <Music size={36} className="text-[#ff4da3]" /> 
+              <Music size={36} className="text-[#ff4da3]" />
               TextMyTrack
             </h1>
             <p className="text-gray-400 mt-1 ml-12">DJ Dashboard</p>
@@ -303,23 +303,27 @@ export default function Dashboard() {
             {filteredRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group min-h-[160px]"
+                className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group min-height-[160px]"
               >
-                <div className="flex gap-5">
-                  {/* Thumbnail */}
-                  <div className="flex-shrink-0 h-full">
-                    {req.thumbnail ? (
-                      <img
-                        src={req.thumbnail}
-                        alt={req.title}
-                        className="h-full w-28 rounded-xl object-cover border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg"
-                      />
-                    ) : (
-                      <div className="h-full w-28 rounded-xl bg-gradient-to-br from-[#2a2a40] to-[#1e1e2d] flex items-center justify-center border-2 border-[#2a2a40]">
-                        <Music size={40} className="text-gray-600" />
-                      </div>
-                    )}
+                <div className="flex gap-5 h-full">
+
+                  {/* 🔥 FIXED THUMBNAILS (square & full height) */}
+                  <div className="flex-shrink-0 h-full flex items-stretch">
+                    <div className="aspect-square h-full rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg bg-[#1e1e2d]">
+                      {req.thumbnail ? (
+                        <img
+                          src={req.thumbnail}
+                          alt={req.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#2a2a40] to-[#1e1e2d]">
+                          <Music size={40} className="text-gray-600" />
+                        </div>
+                      )}
+                    </div>
                   </div>
+
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     {/* Title and Status */}
