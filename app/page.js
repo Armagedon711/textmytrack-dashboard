@@ -158,12 +158,24 @@ export default function Dashboard() {
     return past.toLocaleDateString();
   }
 
+  // ⭐ UPDATED PHONE FORMATTER
   function formatPhoneNumber(phoneNumber) {
     if (!phoneNumber) return "Not assigned";
+
+    // Strip everything except digits
     const cleaned = phoneNumber.replace(/\D/g, "");
-    if (cleaned.length === 10) {
-      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+
+    // Remove leading country code if present
+    let core = cleaned;
+    if (cleaned.length === 11 && cleaned.startsWith("1")) {
+      core = cleaned.slice(1);
     }
+
+    // Now format if 10 digits
+    if (core.length === 10) {
+      return `(${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
+    }
+
     return phoneNumber;
   }
 
@@ -213,6 +225,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 font-medium">Your TextMyTrack Number</p>
+
                   {djProfile ? (
                     <p className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#4da3ff] to-[#b366ff]">
                       {formatPhoneNumber(djProfile.twilio_number)}
@@ -323,7 +336,10 @@ export default function Dashboard() {
                             <h2 className="text-2xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
                               {req.title}
                             </h2>
-                            <ExternalLink size={18} className="text-gray-500 group-hover/link:text-[#ff4da3] transition-colors" />
+                            <ExternalLink
+                              size={18}
+                              className="text-gray-500 group-hover/link:text-[#ff4da3] transition-colors"
+                            />
                           </a>
                         ) : (
                           <h2 className="text-2xl font-bold text-white">{req.title}</h2>
@@ -339,7 +355,7 @@ export default function Dashboard() {
                             ? "bg-green-500/20 text-green-400 border border-green-500/30"
                             : req.status === "played"
                             ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                            : "bg-red-500/20 text-red-400 border red-500/30"
                         }`}
                       >
                         {req.status}
