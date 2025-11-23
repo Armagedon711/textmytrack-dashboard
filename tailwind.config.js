@@ -3,18 +3,19 @@ module.exports = {
   darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",
+    "./app/auth/**/*.{js,ts,jsx,tsx}",   // ✅ ADD THIS
     "./components/**/*.{js,ts,jsx,tsx}",
-    "./lib/**/*.{js,ts,jsx,tsx}",      // ✅ required so brand colors load
-    "./pages/**/*.{js,ts,jsx,tsx}",    // (optional but recommended)
+    "./lib/**/*.{js,ts,jsx,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
       colors: {
         brand: {
-          pink: "#ff4da3",      // neon pink
-          purple: "#b366ff",    // neon purple
-          blue: "#4da3ff",      // neon blue
-          glow: "#c07dff",      // glow color
+          pink: "#ff4da3",
+          purple: "#b366ff",
+          blue: "#4da3ff",
+          glow: "#c07dff",
         },
       },
       boxShadow: {
