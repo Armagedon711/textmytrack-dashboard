@@ -71,16 +71,23 @@ export default function Dashboard() {
         setProfileError("DJ profile not found. Please contact support.");
       }
     } catch (err) {
+      console.error("Error loading profile", err);
       setProfileError("Error loading profile");
     }
   }
 
-  // Load requests
-  async function fetchRequests() {
-    const res = await fetch(`/api/requests?dj_id=${user.id}`);
-    const json = await res.json();
-    setRequests(json.requests || []);
-    setLoading(false);
+  // Load requests for a specific DJ
+  async function fetchRequests(djId) {
+    if (!djId) return;
+    try {
+      const res = await fetch(`/api/requests?dj_id=${djId}`);
+      const json = await res.json();
+      setRequests(json.requests || []);
+    } catch (err) {
+      console.error("Error loading requests", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Get logged-in user
@@ -90,18 +97,18 @@ export default function Dashboard() {
       if (data?.user) {
         setUser(data.user);
         fetchDjProfile(data.user.id);
+        // Load this DJ's requests as soon as we know who they are
+        fetchRequests(data.user.id);
       } else {
         router.push("/login");
       }
     }
     getUser();
-  }, []);
+  }, [router, supabase]);
 
-  // Live updates
+  // Live updates (only for this DJ)
   useEffect(() => {
     if (!user) return; // wait for auth to load
-
-    fetchRequests(user.id); // filtered by logged-in DJ
 
     const channel = supabase
       .channel("realtime-requests")
@@ -112,8 +119,10 @@ export default function Dashboard() {
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
-  }, [user]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, supabase]);
 
   async function updateStatus(id, status) {
     await fetch("/api/requests-status", {
@@ -128,7 +137,6 @@ export default function Dashboard() {
     }
   }
 
-
   async function deleteRequest(id) {
     if (!confirm("Are you sure you want to reject and delete this song request?"))
       return;
@@ -141,7 +149,7 @@ export default function Dashboard() {
 
     const result = await res.json();
     if (result.success) {
-      setRequests(requests.filter((req) => req.id !== id));
+      setRequests((prev) => prev.filter((req) => req.id !== id));
     } else {
       alert("Failed to delete request");
     }
@@ -231,7 +239,9 @@ export default function Dashboard() {
                   <Phone size={28} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400 font-medium">Your TextMyTrack Number</p>
+                  <p className="text-sm text-gray-400 font-medium">
+                    Your TextMyTrack Number
+                  </p>
 
                   {djProfile ? (
                     <p className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#4da3ff] to-[#b366ff]">
@@ -264,11 +274,15 @@ export default function Dashboard() {
           </div>
           <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
             <p className="text-gray-400 text-sm mb-1">Pending</p>
-            <p className="text-3xl font-bold text-yellow-400">{stats.pending}</p>
+            <p className="text-3xl font-bold text-yellow-400">
+              {stats.pending}
+            </p>
           </div>
           <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
             <p className="text-gray-400 text-sm mb-1">Approved</p>
-            <p className="text-3xl font-bold text-green-400">{stats.approved}</p>
+            <p className="text-3xl font-bold text-green-400">
+              {stats.approved}
+            </p>
           </div>
           <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
             <p className="text-gray-400 text-sm mb-1">Played</p>
@@ -302,7 +316,9 @@ export default function Dashboard() {
           <div className="text-center py-20">
             <Music size={64} className="mx-auto text-gray-600 mb-4" />
             <p className="text-gray-500 text-xl">
-              {filterStatus === "all" ? "No requests yet." : `No ${filterStatus} requests.`}
+              {filterStatus === "all"
+                ? "No requests yet."
+                : `No ${filterStatus} requests.`}
             </p>
           </div>
         ) : (
@@ -313,7 +329,6 @@ export default function Dashboard() {
                 className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group min-height-[160px]"
               >
                 <div className="flex gap-5 h-full">
-
                   {/* Thumbnail */}
                   <div className="flex-shrink-0">
                     <div className="h-full aspect-square max-h-[205px] rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg">
@@ -330,6 +345,7 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
+
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     {/* Title and Status */}
@@ -351,9 +367,13 @@ export default function Dashboard() {
                             />
                           </a>
                         ) : (
-                          <h2 className="text-2xl font-bold text-white">{req.title}</h2>
+                          <h2 className="text-2xl font-bold text-white">
+                            {req.title}
+                          </h2>
                         )}
-                        <p className="text-lg text-[#4da3ff] font-medium mt-1">{req.artist}</p>
+                        <p className="text-lg text-[#4da3ff] font-medium mt-1">
+                          {req.artist}
+                        </p>
                       </div>
 
                       <span
