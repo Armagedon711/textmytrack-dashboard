@@ -19,6 +19,7 @@ import {
   Sparkles,
   VolumeX,
   ChevronDown,
+  Play,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -32,18 +33,12 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
-  const [selectedPlatform, setSelectedPlatform] = useState("youtube"); // NEW: Platform selector
-
-  // Helper function to add mute parameter to YouTube URLs
-  function getMutedYouTubeUrl(url) {
-    if (!url) return '';
-    return url.includes('?') ? `${url}&mute=1` : `${url}?mute=1`;
-  }
+  const [selectedPlatform, setSelectedPlatform] = useState("youtube");
+  const [videoModal, setVideoModal] = useState(null); // NEW: For embedded player modal
 
   // Helper function to get the appropriate URL based on platform
   function getPlatformUrl(request) {
     if (selectedPlatform === "youtube") {
-      // Try youtube_url first, then fall back to url field
       return request.youtube_url || request.url || null;
     } else if (selectedPlatform === "spotify") {
       return request.spotify_url || null;
@@ -51,19 +46,18 @@ export default function Dashboard() {
     return null;
   }
 
-  // Helper function to get final URL with muting applied for YouTube
-  function getFinalUrl(request) {
-    const platformUrl = getPlatformUrl(request);
-    
-    if (!platformUrl) return null;
-    
-    // If YouTube is selected, ALWAYS apply mute parameter
-    if (selectedPlatform === "youtube") {
-      return getMutedYouTubeUrl(platformUrl);
+  // Helper function to open video (modal for YouTube, direct link for Spotify)
+  function handleOpenVideo(request) {
+    if (selectedPlatform === "youtube" && request.youtube_video_id) {
+      // Open YouTube in modal with embedded player (supports mute!)
+      setVideoModal(request.youtube_video_id);
+    } else {
+      // For Spotify or if no video_id, open in new tab
+      const url = getPlatformUrl(request);
+      if (url) {
+        window.open(url, '_blank');
+      }
     }
-    
-    // For other platforms, return URL as-is
-    return platformUrl;
   }
 
   // Fetch DJ profile with Twilio number
@@ -100,7 +94,6 @@ export default function Dashboard() {
 
       if (data) {
         setDjProfile(data);
-        // Load saved platform preference if exists
         if (data.preferred_platform) {
           setSelectedPlatform(data.preferred_platform);
         }
@@ -125,11 +118,8 @@ export default function Dashboard() {
     }
   }
 
-  // Save platform preference
   async function updatePlatformPreference(platform) {
     setSelectedPlatform(platform);
-    
-    // Save to database
     if (user) {
       await supabase
         .from('dj_profiles')
@@ -232,6 +222,43 @@ export default function Dashboard() {
       {/* Gradient Background Orb */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#ff4da3]/20 via-[#b366ff]/10 to-transparent rounded-full blur-3xl pointer-events-none" />
       
+      {/* Video Modal */}
+      {videoModal && (
+        <div 
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setVideoModal(null)}
+        >
+          <div 
+            className="bg-[#1a1a2a] rounded-2xl overflow-hidden max-w-5xl w-full shadow-2xl border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="aspect-video">
+              <iframe
+                width="100%"
+                height="100%"
+                src={`https://www.youtube.com/embed/${videoModal}?autoplay=1&mute=1&rel=0`}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
+              />
+            </div>
+            <div className="p-4 flex items-center justify-between bg-[#141420]">
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <VolumeX size={16} />
+                <span>Video started muted - Click to unmute</span>
+              </div>
+              <button
+                onClick={() => setVideoModal(null)}
+                className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-sm font-semibold"
+              >
+                <X size={16} className="inline mr-1" /> Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="relative max-w-7xl mx-auto p-8">
         {/* Top Bar */}
         <div className="flex items-center justify-between mb-12">
@@ -368,7 +395,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-4">
             {filteredRequests.map((req) => {
-              const finalUrl = getFinalUrl(req);
+              const hasUrl = getPlatformUrl(req);
               const isYouTube = selectedPlatform === "youtube";
 
               return (
@@ -395,21 +422,19 @@ export default function Dashboard() {
                       {/* Header */}
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1 min-w-0">
-                          {finalUrl ? (
-                            <a
-                              href={finalUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="group/link inline-flex items-center gap-2"
+                          {hasUrl ? (
+                            <button
+                              onClick={() => handleOpenVideo(req)}
+                              className="group/link inline-flex items-center gap-2 text-left hover:opacity-90 transition-opacity"
                             >
                               <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
                                 {req.title}
                               </h2>
                               <div className="flex items-center gap-1">
                                 {isYouTube && <VolumeX size={14} className="text-gray-600 group-hover/link:text-gray-500" />}
-                                <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
+                                <Play size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
                               </div>
-                            </a>
+                            </button>
                           ) : (
                             <div>
                               <h2 className="text-xl font-bold text-white">{req.title}</h2>
