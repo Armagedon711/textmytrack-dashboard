@@ -208,20 +208,6 @@ export default function Dashboard() {
               <p className="text-gray-200">{user.email}</p>
             </div>
           </div>
-          
-          {/* Debug info - you can remove this later */}
-          <details className="mt-3 text-xs text-gray-500">
-            <summary className="cursor-pointer hover:text-gray-400">Debug Info (click to expand)</summary>
-            <pre className="mt-2 p-2 bg-[#0a0a0f] rounded overflow-auto">
-              {JSON.stringify({ 
-                userId: user.id,
-                userEmail: user.email,
-                djProfileFound: !!djProfile,
-                djProfileData: djProfile,
-                error: profileError
-              }, null, 2)}
-            </pre>
-          </details>
         </div>
       )}
 
@@ -261,15 +247,19 @@ export default function Dashboard() {
               <p className="text-gray-300 mb-2">
                 Genre:{" "}
                 <span className="text-[#b366ff] font-medium">
-                  {req.genre}
+                  {req.genre || "Unknown"}
                 </span>{" "}
                 • Energy:{" "}
                 <span className="text-[#ff4da3] font-medium">
-                  {req.energy}
+                  {req.energy || "Unknown"}
                 </span>{" "}
                 • Mood:{" "}
                 <span className="text-[#4da3ff] font-medium">
-                  {req.mood}
+                  {req.mood || "Unknown"}
+                </span>{" "}
+                • Cursing:{" "}
+                <span className={`font-medium ${req.explicit ? "text-red-400" : "text-green-400"}`}>
+                  {req.explicit ? "Yes" : "No"}
                 </span>
               </p>
 
