@@ -43,11 +43,27 @@ export default function Dashboard() {
   // Helper function to get the appropriate URL based on platform
   function getPlatformUrl(request) {
     if (selectedPlatform === "youtube") {
-      return request.youtube_url || request.url;
+      // Try youtube_url first, then fall back to url field
+      return request.youtube_url || request.url || null;
     } else if (selectedPlatform === "spotify") {
       return request.spotify_url || null;
     }
     return null;
+  }
+
+  // Helper function to get final URL with muting applied for YouTube
+  function getFinalUrl(request) {
+    const platformUrl = getPlatformUrl(request);
+    
+    if (!platformUrl) return null;
+    
+    // If YouTube is selected, ALWAYS apply mute parameter
+    if (selectedPlatform === "youtube") {
+      return getMutedYouTubeUrl(platformUrl);
+    }
+    
+    // For other platforms, return URL as-is
+    return platformUrl;
   }
 
   // Fetch DJ profile with Twilio number
@@ -352,9 +368,8 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-4">
             {filteredRequests.map((req) => {
-              const platformUrl = getPlatformUrl(req);
+              const finalUrl = getFinalUrl(req);
               const isYouTube = selectedPlatform === "youtube";
-              const finalUrl = isYouTube && platformUrl ? getMutedYouTubeUrl(platformUrl) : platformUrl;
 
               return (
                 <div
