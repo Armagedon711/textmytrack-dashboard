@@ -77,7 +77,7 @@ export default function Dashboard() {
 
   // Load requests
   async function fetchRequests() {
-    const res = await fetch("/api/requests");
+    const res = await fetch(`/api/requests?dj_id=${user.id}`);
     const json = await res.json();
     setRequests(json.requests || []);
     setLoading(false);
@@ -99,19 +99,21 @@ export default function Dashboard() {
 
   // Live updates
   useEffect(() => {
-    fetchRequests();
+    if (!user) return; // wait for auth to load
+
+    fetchRequests(user.id); // filtered by logged-in DJ
 
     const channel = supabase
       .channel("realtime-requests")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "requests" },
-        () => fetchRequests()
+        () => fetchRequests(user.id) // reload only this DJ's requests
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [user]);
 
   async function updateStatus(id, status) {
     await fetch("/api/requests-status", {
@@ -119,8 +121,13 @@ export default function Dashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    fetchRequests();
+
+    // Reload only THIS user's requests
+    if (user) {
+      fetchRequests(user.id);
+    }
   }
+
 
   async function deleteRequest(id) {
     if (!confirm("Are you sure you want to reject and delete this song request?"))
