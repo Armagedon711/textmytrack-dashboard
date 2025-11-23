@@ -307,9 +307,9 @@ export default function Dashboard() {
               >
                 <div className="flex gap-5 h-full">
 
-                  {/* 🔥 FIXED THUMBNAILS (square & full height) */}
-                  <div className="flex-shrink-0 h-full flex items-stretch">
-                    <div className="aspect-square h-full rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg bg-[#1e1e2d]">
+                  {/* Thumbnail */}
+                  <div className="flex-shrink-0">
+                    <div className="h-full aspect-square max-h-[140px] rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg">
                       {req.thumbnail ? (
                         <img
                           src={req.thumbnail}
@@ -323,7 +323,6 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     {/* Title and Status */}
