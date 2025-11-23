@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
-import { ArrowRight, Check, X, Music, LogOut, Phone, AlertCircle } from "lucide-react";
+import { ArrowRight, Check, X, Music, LogOut, Phone, AlertCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
@@ -124,6 +124,33 @@ export default function Dashboard() {
     });
 
     fetchRequests();
+  }
+
+  async function deleteRequest(id) {
+    // Show confirmation
+    if (!confirm("Are you sure you want to reject and delete this song request?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/requests-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        // Immediately remove from UI
+        setRequests(requests.filter(req => req.id !== id));
+      } else {
+        alert("Failed to delete request: " + (result.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error deleting request:", error);
+      alert("Failed to delete request");
+    }
   }
 
   async function handleLogout() {
@@ -286,10 +313,10 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => updateStatus(req.id, "rejected")}
+                  onClick={() => deleteRequest(req.id)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition"
                 >
-                  <X size={18} /> Reject
+                  <Trash2 size={18} /> Reject
                 </button>
               </div>
             </div>
