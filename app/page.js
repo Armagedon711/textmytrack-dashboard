@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
-import { ArrowRight, Check, X, Music, LogOut, Phone } from "lucide-react";
+import { ArrowRight, Check, X, Music, LogOut, Phone, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
@@ -13,24 +13,65 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [djProfile, setDjProfile] = useState(null);
   const [user, setUser] = useState(null);
+  const [profileError, setProfileError] = useState(null);
 
   // Fetch DJ profile with Twilio number
   async function fetchDjProfile(userId) {
     try {
-      const { data, error } = await supabase
+      console.log("Fetching DJ profile for user ID:", userId);
+      
+      // Try fetching with different possible column names
+      let data, error;
+      
+      // First attempt: match by 'id'
+      const result1 = await supabase
         .from("dj_profiles")
-        .select("twilio_number, email")
+        .select("*")
         .eq("id", userId)
-        .single();
-
-      if (error) {
-        console.error("Error fetching DJ profile:", error);
-        return;
+        .maybeSingle();
+      
+      console.log("Query by 'id':", result1);
+      
+      if (result1.data) {
+        data = result1.data;
+      } else {
+        // Second attempt: match by 'user_id'
+        const result2 = await supabase
+          .from("dj_profiles")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+        
+        console.log("Query by 'user_id':", result2);
+        
+        if (result2.data) {
+          data = result2.data;
+        } else {
+          // Third attempt: match by email
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.email) {
+            const result3 = await supabase
+              .from("dj_profiles")
+              .select("*")
+              .eq("email", user.email)
+              .maybeSingle();
+            
+            console.log("Query by 'email':", result3);
+            data = result3.data;
+          }
+        }
       }
 
-      setDjProfile(data);
+      if (data) {
+        console.log("DJ Profile found:", data);
+        setDjProfile(data);
+      } else {
+        console.log("No DJ profile found in database");
+        setProfileError("DJ profile not found. Please contact support.");
+      }
     } catch (err) {
-      console.error("Error:", err);
+      console.error("Error fetching DJ profile:", err);
+      setProfileError("Error loading profile");
     }
   }
 
@@ -46,9 +87,13 @@ export default function Dashboard() {
   useEffect(() => {
     async function getUser() {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log("Current user:", user);
       if (user) {
         setUser(user);
         fetchDjProfile(user.id);
+      } else {
+        console.log("No user found - redirecting to login");
+        router.push("/login");
       }
     }
     
@@ -134,8 +179,8 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* DJ Info Card */}
-      {djProfile && (
+      {/* DJ Info Card - Always show if user exists */}
+      {user && (
         <div className="mb-6 bg-[#141420] p-5 rounded-xl border border-[#1e1e2d] shadow-glow">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -144,16 +189,39 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Your TextMyTrack Number</p>
-                <p className="text-2xl font-bold text-[#4da3ff]">
-                  {formatPhoneNumber(djProfile.twilio_number)}
-                </p>
+                {djProfile ? (
+                  <p className="text-2xl font-bold text-[#4da3ff]">
+                    {formatPhoneNumber(djProfile.twilio_number)}
+                  </p>
+                ) : profileError ? (
+                  <p className="text-lg text-red-400 flex items-center gap-2">
+                    <AlertCircle size={18} />
+                    {profileError}
+                  </p>
+                ) : (
+                  <p className="text-lg text-gray-400">Loading...</p>
+                )}
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-400">Logged in as</p>
-              <p className="text-gray-200">{user?.email || djProfile.email}</p>
+              <p className="text-gray-200">{user.email}</p>
             </div>
           </div>
+          
+          {/* Debug info - you can remove this later */}
+          <details className="mt-3 text-xs text-gray-500">
+            <summary className="cursor-pointer hover:text-gray-400">Debug Info (click to expand)</summary>
+            <pre className="mt-2 p-2 bg-[#0a0a0f] rounded overflow-auto">
+              {JSON.stringify({ 
+                userId: user.id,
+                userEmail: user.email,
+                djProfileFound: !!djProfile,
+                djProfileData: djProfile,
+                error: profileError
+              }, null, 2)}
+            </pre>
+          </details>
         </div>
       )}
 
