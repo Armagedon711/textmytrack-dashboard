@@ -59,9 +59,11 @@ export async function POST(request) {
       genre,
       mood,
       energy,
-      explicit,        // <-- NOW A STRING ("Explicit" | "Clean" | "Undetermined")
+      explicit,        // <-- Now a string label
       requestedBy,
       requestedAt,
+      url,             // <-- ADDED
+      thumbnail,       // <-- ADDED
       dj_id,
     } = body;
 
@@ -73,7 +75,7 @@ export async function POST(request) {
       );
     }
 
-    // Normalize explicit field to always be a string
+    // Normalize explicit to valid string
     const explicitValue =
       explicit === "Explicit" ||
       explicit === "Clean" ||
@@ -88,7 +90,9 @@ export async function POST(request) {
       genre: genre || null,
       mood: mood || null,
       energy: energy || null,
-      explicit: explicitValue,      // <-- stored as STRING
+      explicit: explicitValue, // stored as string
+      url: url || null,        // <-- NEW
+      thumbnail: thumbnail || null, // <-- NEW
       requestedBy,
       requestedAt,
       status: "pending",
