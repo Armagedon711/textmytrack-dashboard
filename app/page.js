@@ -17,8 +17,8 @@ import {
   TrendingUp,
   Activity,
   Sparkles,
-  Volume2,
   VolumeX,
+  ChevronDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -32,11 +32,22 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedPlatform, setSelectedPlatform] = useState("youtube"); // NEW: Platform selector
 
   // Helper function to add mute parameter to YouTube URLs
   function getMutedYouTubeUrl(url) {
     if (!url) return '';
     return url.includes('?') ? `${url}&mute=1` : `${url}?mute=1`;
+  }
+
+  // Helper function to get the appropriate URL based on platform
+  function getPlatformUrl(request) {
+    if (selectedPlatform === "youtube") {
+      return request.youtube_url || request.url;
+    } else if (selectedPlatform === "spotify") {
+      return request.spotify_url || null;
+    }
+    return null;
   }
 
   // Fetch DJ profile with Twilio number
@@ -73,6 +84,10 @@ export default function Dashboard() {
 
       if (data) {
         setDjProfile(data);
+        // Load saved platform preference if exists
+        if (data.preferred_platform) {
+          setSelectedPlatform(data.preferred_platform);
+        }
       } else {
         setProfileError("DJ profile not found");
       }
@@ -91,6 +106,19 @@ export default function Dashboard() {
       console.error("Error loading requests", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Save platform preference
+  async function updatePlatformPreference(platform) {
+    setSelectedPlatform(platform);
+    
+    // Save to database
+    if (user) {
+      await supabase
+        .from('dj_profiles')
+        .update({ preferred_platform: platform })
+        .eq('id', user.id);
     }
   }
 
@@ -216,7 +244,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Phone Number Card */}
+        {/* Phone Number Card with Platform Selector */}
         {user && (
           <div className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 backdrop-blur-xl shadow-2xl">
             <div className="flex items-center justify-between">
@@ -240,8 +268,24 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-              <div className="px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
-                <p className="text-xs text-green-400 font-medium">● Active</p>
+
+              {/* Platform Selector Dropdown */}
+              <div className="flex flex-col items-end gap-2">
+                <label className="text-xs text-gray-500 font-medium">Music Platform</label>
+                <div className="relative">
+                  <select
+                    value={selectedPlatform}
+                    onChange={(e) => updatePlatformPreference(e.target.value)}
+                    className="appearance-none px-4 py-2 pr-10 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-medium hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#ff4da3]/50"
+                  >
+                    <option value="youtube" className="bg-[#1a1a2a] text-white">YouTube</option>
+                    <option value="spotify" className="bg-[#1a1a2a] text-white">Spotify</option>
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                </div>
+                <div className="px-3 py-1 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <p className="text-xs text-green-400 font-medium">● Active</p>
+                </div>
               </div>
             </div>
           </div>
@@ -307,127 +351,141 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredRequests.map((req) => (
-              <div
-                key={req.id}
-                className="p-5 rounded-2xl bg-gradient-to-br from-white/[0.07] to-white/[0.02] border border-white/10 backdrop-blur-sm hover:border-white/20 transition-all group"
-              >
-                <div className="flex gap-5">
-                  {/* Thumbnail */}
-                  <div className="flex-shrink-0">
-                    <div className="w-32 h-32 rounded-xl overflow-hidden border border-white/10 group-hover:border-[#ff4da3]/50 transition-all shadow-lg">
-                      {req.thumbnail ? (
-                        <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
-                          <Music size={32} className="text-gray-600" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
+            {filteredRequests.map((req) => {
+              const platformUrl = getPlatformUrl(req);
+              const isYouTube = selectedPlatform === "youtube";
+              const finalUrl = isYouTube && platformUrl ? getMutedYouTubeUrl(platformUrl) : platformUrl;
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        {req.url ? (
-                          <a
-                            href={getMutedYouTubeUrl(req.url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="group/link inline-flex items-center gap-2"
-                          >
-                            <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
-                              {req.title}
-                            </h2>
-                            <div className="flex items-center gap-1">
-                              <VolumeX size={14} className="text-gray-600 group-hover/link:text-gray-500" />
-                              <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
-                            </div>
-                          </a>
+              return (
+                <div
+                  key={req.id}
+                  className="p-5 rounded-2xl bg-gradient-to-br from-white/[0.07] to-white/[0.02] border border-white/10 backdrop-blur-sm hover:border-white/20 transition-all group"
+                >
+                  <div className="flex gap-5">
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <div className="w-32 h-32 rounded-xl overflow-hidden border border-white/10 group-hover:border-[#ff4da3]/50 transition-all shadow-lg">
+                        {req.thumbnail ? (
+                          <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" />
                         ) : (
-                          <h2 className="text-xl font-bold text-white">{req.title}</h2>
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
+                            <Music size={32} className="text-gray-600" />
+                          </div>
                         )}
-                        <p className="text-sm text-gray-400 font-medium mt-1">{req.artist}</p>
                       </div>
-
-                      <span
-                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                          req.status === "pending"
-                            ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                            : req.status === "approved"
-                            ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                            : req.status === "played"
-                            ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                            : "bg-red-500/10 text-red-400 border border-red-500/20"
-                        }`}
-                      >
-                        {req.status}
-                      </span>
                     </div>
 
-                    {/* Metadata */}
-                    <div className="flex flex-wrap gap-3 mb-4">
-                      {[
-                        { label: req.genre || "Unknown", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
-                        { label: req.energy || "Unknown", color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
-                        { label: req.mood || "Unknown", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-                        { 
-                          label: req.explicit || "Unknown",
-                          color: req.explicit === "Explicit" ? "text-red-400" : req.explicit === "Clean" ? "text-green-400" : "text-yellow-400",
-                          bg: req.explicit === "Explicit" ? "bg-red-500/10" : req.explicit === "Clean" ? "bg-green-500/10" : "bg-yellow-500/10",
-                          border: req.explicit === "Explicit" ? "border-red-500/20" : req.explicit === "Clean" ? "border-green-500/20" : "border-yellow-500/20"
-                        },
-                      ].map((tag, i) => (
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          {finalUrl ? (
+                            <a
+                              href={finalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group/link inline-flex items-center gap-2"
+                            >
+                              <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
+                                {req.title}
+                              </h2>
+                              <div className="flex items-center gap-1">
+                                {isYouTube && <VolumeX size={14} className="text-gray-600 group-hover/link:text-gray-500" />}
+                                <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
+                              </div>
+                            </a>
+                          ) : (
+                            <div>
+                              <h2 className="text-xl font-bold text-white">{req.title}</h2>
+                              <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                                <AlertCircle size={12} />
+                                {selectedPlatform === "spotify" 
+                                  ? "Spotify link not available yet" 
+                                  : "Link not available"}
+                              </p>
+                            </div>
+                          )}
+                          <p className="text-sm text-gray-400 font-medium mt-1">{req.artist}</p>
+                        </div>
+
                         <span
-                          key={i}
-                          className={`px-3 py-1 rounded-lg text-xs font-semibold ${tag.color} ${tag.bg} border ${tag.border}`}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                            req.status === "pending"
+                              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                              : req.status === "approved"
+                              ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                              : req.status === "played"
+                              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                              : "bg-red-500/10 text-red-400 border border-red-500/20"
+                          }`}
                         >
-                          {tag.label}
+                          {req.status}
                         </span>
-                      ))}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <div className="flex items-center gap-1.5">
-                          <User size={12} />
-                          <span>{req.requestedBy}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Clock size={12} />
-                          <span>{timeAgo(req.requestedAt)}</span>
-                        </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => updateStatus(req.id, "approved")}
-                          className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
-                        >
-                          <Check size={14} className="inline mr-1" /> Approve
-                        </button>
-                        <button
-                          onClick={() => updateStatus(req.id, "played")}
-                          className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
-                        >
-                          <ArrowRight size={14} className="inline mr-1" /> Played
-                        </button>
-                        <button
-                          onClick={() => deleteRequest(req.id)}
-                          className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
-                        >
-                          <Trash2 size={14} className="inline mr-1" /> Reject
-                        </button>
+                      {/* Metadata */}
+                      <div className="flex flex-wrap gap-3 mb-4">
+                        {[
+                          { label: req.genre || "Unknown", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
+                          { label: req.energy || "Unknown", color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
+                          { label: req.mood || "Unknown", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+                          { 
+                            label: req.explicit || "Unknown",
+                            color: req.explicit === "Explicit" ? "text-red-400" : req.explicit === "Clean" ? "text-green-400" : "text-yellow-400",
+                            bg: req.explicit === "Explicit" ? "bg-red-500/10" : req.explicit === "Clean" ? "bg-green-500/10" : "bg-yellow-500/10",
+                            border: req.explicit === "Explicit" ? "border-red-500/20" : req.explicit === "Clean" ? "border-green-500/20" : "border-yellow-500/20"
+                          },
+                        ].map((tag, i) => (
+                          <span
+                            key={i}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold ${tag.color} ${tag.bg} border ${tag.border}`}
+                          >
+                            {tag.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <div className="flex items-center gap-1.5">
+                            <User size={12} />
+                            <span>{req.requestedBy}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={12} />
+                            <span>{timeAgo(req.requestedAt)}</span>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => updateStatus(req.id, "approved")}
+                            className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
+                          >
+                            <Check size={14} className="inline mr-1" /> Approve
+                          </button>
+                          <button
+                            onClick={() => updateStatus(req.id, "played")}
+                            className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
+                          >
+                            <ArrowRight size={14} className="inline mr-1" /> Played
+                          </button>
+                          <button
+                            onClick={() => deleteRequest(req.id)}
+                            className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
+                          >
+                            <Trash2 size={14} className="inline mr-1" /> Reject
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
