@@ -303,24 +303,23 @@ export default function Dashboard() {
             {filteredRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group"
+                className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group min-h-[160px]"
               >
                 <div className="flex gap-5">
                   {/* Thumbnail */}
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 h-full">
                     {req.thumbnail ? (
                       <img
                         src={req.thumbnail}
                         alt={req.title}
-                        className="w-28 h-28 rounded-xl object-cover border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg"
+                        className="h-full w-28 rounded-xl object-cover border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg"
                       />
                     ) : (
-                      <div className="w-28 h-28 rounded-xl bg-gradient-to-br from-[#2a2a40] to-[#1e1e2d] flex items-center justify-center border-2 border-[#2a2a40]">
+                      <div className="h-full w-28 rounded-xl bg-gradient-to-br from-[#2a2a40] to-[#1e1e2d] flex items-center justify-center border-2 border-[#2a2a40]">
                         <Music size={40} className="text-gray-600" />
                       </div>
                     )}
                   </div>
-
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     {/* Title and Status */}
