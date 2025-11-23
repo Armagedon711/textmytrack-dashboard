@@ -14,6 +14,9 @@ import {
   ExternalLink,
   Clock,
   User,
+  TrendingUp,
+  Activity,
+  Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -32,8 +35,6 @@ export default function Dashboard() {
   async function fetchDjProfile(userId) {
     try {
       let data;
-
-      // Attempt #1 – match "id"
       const result1 = await supabase
         .from("dj_profiles")
         .select("*")
@@ -42,7 +43,6 @@ export default function Dashboard() {
 
       if (result1.data) data = result1.data;
       else {
-        // Attempt #2 – match "user_id"
         const result2 = await supabase
           .from("dj_profiles")
           .select("*")
@@ -51,7 +51,6 @@ export default function Dashboard() {
 
         if (result2.data) data = result2.data;
         else {
-          // Attempt #3 – match by email
           const { data: userObj } = await supabase.auth.getUser();
           if (userObj?.user?.email) {
             const result3 = await supabase
@@ -59,7 +58,6 @@ export default function Dashboard() {
               .select("*")
               .eq("email", userObj.user.email)
               .maybeSingle();
-
             data = result3.data;
           }
         }
@@ -68,15 +66,13 @@ export default function Dashboard() {
       if (data) {
         setDjProfile(data);
       } else {
-        setProfileError("DJ profile not found. Please contact support.");
+        setProfileError("DJ profile not found");
       }
     } catch (err) {
-      console.error("Error loading profile", err);
       setProfileError("Error loading profile");
     }
   }
 
-  // Load requests for a specific DJ
   async function fetchRequests(djId) {
     if (!djId) return;
     try {
@@ -90,14 +86,12 @@ export default function Dashboard() {
     }
   }
 
-  // Get logged-in user
   useEffect(() => {
     async function getUser() {
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
         setUser(data.user);
         fetchDjProfile(data.user.id);
-        // Load this DJ's requests as soon as we know who they are
         fetchRequests(data.user.id);
       } else {
         router.push("/login");
@@ -106,22 +100,17 @@ export default function Dashboard() {
     getUser();
   }, [router, supabase]);
 
-  // Live updates (only for this DJ)
   useEffect(() => {
-    if (!user) return; // wait for auth to load
-
+    if (!user) return;
     const channel = supabase
       .channel("realtime-requests")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "requests" },
-        () => fetchRequests(user.id) // reload only this DJ's requests
+        () => fetchRequests(user.id)
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
   async function updateStatus(id, status) {
@@ -130,28 +119,19 @@ export default function Dashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-
-    // Reload only THIS user's requests
-    if (user) {
-      fetchRequests(user.id);
-    }
+    if (user) fetchRequests(user.id);
   }
 
   async function deleteRequest(id) {
-    if (!confirm("Are you sure you want to reject and delete this song request?"))
-      return;
-
+    if (!confirm("Delete this request?")) return;
     const res = await fetch("/api/requests-delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-
     const result = await res.json();
     if (result.success) {
       setRequests((prev) => prev.filter((req) => req.id !== id));
-    } else {
-      alert("Failed to delete request");
     }
   }
 
@@ -164,43 +144,30 @@ export default function Dashboard() {
     const now = new Date();
     const past = new Date(timestamp);
     const diff = (now - past) / 1000;
-
     if (diff < 60) return "just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-
-    return past.toLocaleDateString();
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
   }
 
-  // ⭐ UPDATED PHONE FORMATTER
   function formatPhoneNumber(phoneNumber) {
     if (!phoneNumber) return "Not assigned";
-
-    // Strip everything except digits
     const cleaned = phoneNumber.replace(/\D/g, "");
-
-    // Remove leading country code if present
     let core = cleaned;
     if (cleaned.length === 11 && cleaned.startsWith("1")) {
       core = cleaned.slice(1);
     }
-
-    // Now format if 10 digits
     if (core.length === 10) {
       return `(${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
     }
-
     return phoneNumber;
   }
 
-  // Filter requests
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     return req.status === filterStatus;
   });
 
-  // Stats
   const stats = {
     total: requests.length,
     pending: requests.filter((r) => r.status === "pending").length,
@@ -209,97 +176,98 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] text-white">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#ff4da3] to-[#b366ff] flex items-center gap-3">
-              <Music size={36} className="text-[#ff4da3]" />
-              TextMyTrack
-            </h1>
-            <p className="text-gray-400 mt-1 ml-12">DJ Dashboard</p>
+    <main className="min-h-screen bg-[#0a0a0f] text-white">
+      {/* Gradient Background Orb */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#ff4da3]/20 via-[#b366ff]/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+      
+      <div className="relative max-w-7xl mx-auto p-8">
+        {/* Top Bar */}
+        <div className="flex items-center justify-between mb-12">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#ff4da3] to-[#b366ff] flex items-center justify-center shadow-lg shadow-[#ff4da3]/20">
+              <Music size={24} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">TextMyTrack</h1>
+              <p className="text-sm text-gray-500">Request Dashboard</p>
+            </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1e1e2d] hover:bg-[#2a2a40] border border-[#2a2a40] transition-all hover:border-[#3a3a50] text-gray-300 hover:text-white"
-          >
-            <LogOut size={18} />
-            Logout
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Logged in as</p>
+              <p className="text-sm font-medium text-gray-300">{user?.email}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 hover:text-white"
+            >
+              <LogOut size={16} className="inline mr-2" />
+              Logout
+            </button>
+          </div>
         </div>
 
-        {/* DJ Info Card */}
+        {/* Phone Number Card */}
         {user && (
-          <div className="mb-8 bg-gradient-to-r from-[#141420] to-[#1a1a2a] p-6 rounded-2xl border border-[#2a2a40] shadow-2xl">
+          <div className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 backdrop-blur-xl shadow-2xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-gradient-to-br from-[#4da3ff] to-[#b366ff] p-4 rounded-xl shadow-lg">
-                  <Phone size={28} className="text-white" />
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#4da3ff] to-[#b366ff] flex items-center justify-center shadow-lg shadow-[#4da3ff]/20">
+                  <Phone size={24} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400 font-medium">
-                    Your TextMyTrack Number
-                  </p>
-
+                  <p className="text-xs text-gray-500 font-medium mb-1">Your TextMyTrack Number</p>
                   {djProfile ? (
-                    <p className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#4da3ff] to-[#b366ff]">
+                    <p className="text-3xl font-bold tracking-tight text-white">
                       {formatPhoneNumber(djProfile.twilio_number)}
                     </p>
-                  ) : profileError ? (
-                    <p className="text-lg text-red-400 flex items-center gap-2">
-                      <AlertCircle size={18} />
-                      {profileError}
-                    </p>
                   ) : (
-                    <p className="text-lg text-gray-400">Loading...</p>
+                    <p className="text-gray-400">Loading...</p>
                   )}
                 </div>
               </div>
-
-              <div className="text-right">
-                <p className="text-sm text-gray-400 font-medium">Logged in as</p>
-                <p className="text-gray-200 font-semibold">{user.email}</p>
+              <div className="px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                <p className="text-xs text-green-400 font-medium">● Active</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Stats Cards */}
+        {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
-            <p className="text-gray-400 text-sm mb-1">Total Requests</p>
-            <p className="text-3xl font-bold text-white">{stats.total}</p>
-          </div>
-          <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
-            <p className="text-gray-400 text-sm mb-1">Pending</p>
-            <p className="text-3xl font-bold text-yellow-400">
-              {stats.pending}
-            </p>
-          </div>
-          <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
-            <p className="text-gray-400 text-sm mb-1">Approved</p>
-            <p className="text-3xl font-bold text-green-400">
-              {stats.approved}
-            </p>
-          </div>
-          <div className="bg-[#141420] p-4 rounded-xl border border-[#2a2a40]">
-            <p className="text-gray-400 text-sm mb-1">Played</p>
-            <p className="text-3xl font-bold text-blue-400">{stats.played}</p>
-          </div>
+          {[
+            { label: "Total Requests", value: stats.total, icon: Activity, color: "text-white" },
+            { label: "Pending", value: stats.pending, icon: Clock, color: "text-yellow-400" },
+            { label: "Approved", value: stats.approved, icon: Check, color: "text-green-400" },
+            { label: "Played", value: stats.played, icon: TrendingUp, color: "text-blue-400" },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/[0.07] transition-all group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <stat.icon size={20} className={`${stat.color} opacity-60`} />
+                <Sparkles size={14} className="text-gray-600 group-hover:text-gray-500 transition-colors" />
+              </div>
+              <p className="text-3xl font-bold mb-1" style={{ color: stat.color === "text-white" ? "#fff" : undefined }}>
+                {stat.value}
+              </p>
+              <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Filter Tabs */}
+        {/* Filter Pills */}
         <div className="flex gap-2 mb-6">
           {["all", "pending", "approved", "played"].map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 filterStatus === status
-                  ? "bg-[#ff4da3] text-white shadow-lg"
-                  : "bg-[#1e1e2d] text-gray-400 hover:bg-[#2a2a40] hover:text-gray-300"
+                  ? "bg-[#ff4da3] text-white shadow-lg shadow-[#ff4da3]/30"
+                  : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-300 border border-white/10"
               }`}
             >
               {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -307,18 +275,21 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Requests */}
+        {/* Request Cards */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#ff4da3] border-t-transparent"></div>
+          <div className="flex items-center justify-center py-32">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-white/10 border-t-[#ff4da3] rounded-full animate-spin" />
+              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-[#b366ff] rounded-full animate-spin" style={{ animationDuration: '1.5s' }} />
+            </div>
           </div>
         ) : filteredRequests.length === 0 ? (
-          <div className="text-center py-20">
-            <Music size={64} className="mx-auto text-gray-600 mb-4" />
-            <p className="text-gray-500 text-xl">
-              {filterStatus === "all"
-                ? "No requests yet."
-                : `No ${filterStatus} requests.`}
+          <div className="text-center py-32">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-white/5 flex items-center justify-center">
+              <Music size={40} className="text-gray-600" />
+            </div>
+            <p className="text-xl text-gray-500 font-medium">
+              {filterStatus === "all" ? "No requests yet" : `No ${filterStatus} requests`}
             </p>
           </div>
         ) : (
@@ -326,21 +297,17 @@ export default function Dashboard() {
             {filteredRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-[#141420] p-5 rounded-2xl border border-[#2a2a40] hover:border-[#3a3a50] shadow-lg hover:shadow-2xl transition-all group min-height-[160px]"
+                className="p-5 rounded-2xl bg-gradient-to-br from-white/[0.07] to-white/[0.02] border border-white/10 backdrop-blur-sm hover:border-white/20 transition-all group"
               >
-                <div className="flex gap-5 h-full">
+                <div className="flex gap-5">
                   {/* Thumbnail */}
                   <div className="flex-shrink-0">
-                    <div className="h-full aspect-square max-h-[205px] rounded-xl overflow-hidden border-2 border-[#2a2a40] group-hover:border-[#ff4da3] transition-all shadow-lg">
+                    <div className="w-32 h-32 rounded-xl overflow-hidden border border-white/10 group-hover:border-[#ff4da3]/50 transition-all shadow-lg">
                       {req.thumbnail ? (
-                        <img
-                          src={req.thumbnail}
-                          alt={req.title}
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#2a2a40] to-[#1e1e2d]">
-                          <Music size={40} className="text-gray-600" />
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
+                          <Music size={32} className="text-gray-600" />
                         </div>
                       )}
                     </div>
@@ -348,7 +315,7 @@ export default function Dashboard() {
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    {/* Title and Status */}
+                    {/* Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0">
                         {req.url ? (
@@ -356,35 +323,28 @@ export default function Dashboard() {
                             href={req.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="group/link inline-flex items-center gap-2 hover:opacity-80 transition-opacity"
+                            className="group/link inline-flex items-center gap-2"
                           >
-                            <h2 className="text-2xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
+                            <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
                               {req.title}
                             </h2>
-                            <ExternalLink
-                              size={18}
-                              className="text-gray-500 group-hover/link:text-[#ff4da3] transition-colors"
-                            />
+                            <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
                           </a>
                         ) : (
-                          <h2 className="text-2xl font-bold text-white">
-                            {req.title}
-                          </h2>
+                          <h2 className="text-xl font-bold text-white">{req.title}</h2>
                         )}
-                        <p className="text-lg text-[#4da3ff] font-medium mt-1">
-                          {req.artist}
-                        </p>
+                        <p className="text-sm text-gray-400 font-medium mt-1">{req.artist}</p>
                       </div>
 
                       <span
-                        className={`px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wide ${
+                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
                           req.status === "pending"
-                            ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                            ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
                             : req.status === "approved"
-                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            ? "bg-green-500/10 text-green-400 border border-green-500/20"
                             : req.status === "played"
-                            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                            : "bg-red-500/20 text-red-400 border red-500/30"
+                            ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                            : "bg-red-500/10 text-red-400 border border-red-500/20"
                         }`}
                       >
                         {req.status}
@@ -392,79 +352,61 @@ export default function Dashboard() {
                     </div>
 
                     {/* Metadata */}
-                    <div className="flex flex-wrap gap-4 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 text-sm">Genre:</span>
-                        <span className="text-[#b366ff] font-semibold px-3 py-1 bg-[#b366ff]/10 rounded-lg border border-[#b366ff]/20">
-                          {req.genre || "Unknown"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 text-sm">Energy:</span>
-                        <span className="text-[#ff4da3] font-semibold px-3 py-1 bg-[#ff4da3]/10 rounded-lg border border-[#ff4da3]/20">
-                          {req.energy || "Unknown"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 text-sm">Mood:</span>
-                        <span className="text-[#4da3ff] font-semibold px-3 py-1 bg-[#4da3ff]/10 rounded-lg border border-[#4da3ff]/20">
-                          {req.mood || "Unknown"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 text-sm">Cursing:</span>
+                    <div className="flex flex-wrap gap-3 mb-4">
+                      {[
+                        { label: req.genre || "Unknown", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
+                        { label: req.energy || "Unknown", color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
+                        { label: req.mood || "Unknown", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+                        { 
+                          label: req.explicit || "Unknown",
+                          color: req.explicit === "Explicit" ? "text-red-400" : req.explicit === "Clean" ? "text-green-400" : "text-yellow-400",
+                          bg: req.explicit === "Explicit" ? "bg-red-500/10" : req.explicit === "Clean" ? "bg-green-500/10" : "bg-yellow-500/10",
+                          border: req.explicit === "Explicit" ? "border-red-500/20" : req.explicit === "Clean" ? "border-green-500/20" : "border-yellow-500/20"
+                        },
+                      ].map((tag, i) => (
                         <span
-                          className={`font-bold px-3 py-1 rounded-lg border ${
-                            req.explicit === "Explicit"
-                              ? "text-red-400 bg-red-400/10 border-red-400/20"
-                              : req.explicit === "Clean"
-                              ? "text-green-400 bg-green-400/10 border-green-400/20"
-                              : "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
-                          }`}
+                          key={i}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold ${tag.color} ${tag.bg} border ${tag.border}`}
                         >
-                          {req.explicit || "Undetermined"}
+                          {tag.label}
                         </span>
-                      </div>
+                      ))}
                     </div>
 
-                    {/* Request Info */}
-                    <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-                      <div className="flex items-center gap-2">
-                        <User size={14} />
-                        <span>{req.requestedBy}</span>
+                    {/* Footer */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-1.5">
+                          <User size={12} />
+                          <span>{req.requestedBy}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={12} />
+                          <span>{timeAgo(req.requestedAt)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock size={14} />
-                        <span>{timeAgo(req.requestedAt)}</span>
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateStatus(req.id, "approved")}
+                          className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
+                        >
+                          <Check size={14} className="inline mr-1" /> Approve
+                        </button>
+                        <button
+                          onClick={() => updateStatus(req.id, "played")}
+                          className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
+                        >
+                          <ArrowRight size={14} className="inline mr-1" /> Played
+                        </button>
+                        <button
+                          onClick={() => deleteRequest(req.id)}
+                          className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
+                        >
+                          <Trash2 size={14} className="inline mr-1" /> Reject
+                        </button>
                       </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => updateStatus(req.id, "approved")}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 transition-all font-semibold shadow-lg hover:shadow-xl"
-                      >
-                        <Check size={18} /> Approve
-                      </button>
-
-                      <button
-                        onClick={() => updateStatus(req.id, "played")}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 transition-all font-semibold shadow-lg hover:shadow-xl"
-                      >
-                        <ArrowRight size={18} />
-                        Played
-                      </button>
-
-                      <button
-                        onClick={() => deleteRequest(req.id)}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 transition-all font-semibold shadow-lg hover:shadow-xl"
-                      >
-                        <Trash2 size={18} /> Reject
-                      </button>
                     </div>
                   </div>
                 </div>
