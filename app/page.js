@@ -2,12 +2,37 @@
 
 import { useState, useEffect } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
-import { ArrowRight, Check, X, Music } from "lucide-react";
+import { ArrowRight, Check, X, Music, LogOut, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
-  const supabase = supabaseBrowserClient(); // ✅ FIXED
+  const supabase = supabaseBrowserClient();
+  const router = useRouter();
+  
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [djProfile, setDjProfile] = useState(null);
+  const [user, setUser] = useState(null);
+
+  // Fetch DJ profile with Twilio number
+  async function fetchDjProfile(userId) {
+    try {
+      const { data, error } = await supabase
+        .from("dj_profiles")
+        .select("twilio_number, email")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching DJ profile:", error);
+        return;
+      }
+
+      setDjProfile(data);
+    } catch (err) {
+      console.error("Error:", err);
+    }
+  }
 
   // Fetch initial data
   async function fetchRequests() {
@@ -16,6 +41,19 @@ export default function Dashboard() {
     setRequests(json.requests || []);
     setLoading(false);
   }
+
+  // Get current user and fetch profile
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        fetchDjProfile(user.id);
+      }
+    }
+    
+    getUser();
+  }, []);
 
   // Realtime updates
   useEffect(() => {
@@ -43,6 +81,11 @@ export default function Dashboard() {
     fetchRequests();
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    window.location.href = "https://textmytrack-dashboard.vercel.app/login";
+  }
+
   function timeAgo(timestamp) {
     const now = new Date();
     const past = new Date(timestamp);
@@ -55,12 +98,66 @@ export default function Dashboard() {
     return past.toLocaleString();
   }
 
+  function formatPhoneNumber(phoneNumber) {
+    if (!phoneNumber) return "Not assigned";
+    // Format as (XXX) XXX-XXXX if it's a US number
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      const match = cleaned.match(/^1(\d{3})(\d{3})(\d{4})$/);
+      if (match) {
+        return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
+      }
+    }
+    if (cleaned.length === 10) {
+      const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+      if (match) {
+        return `(${match[1]}) ${match[2]}-${match[3]}`;
+      }
+    }
+    return phoneNumber;
+  }
+
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white p-6">
-      <h1 className="text-3xl font-bold mb-6 text-brand-pink drop-shadow-glow flex items-center gap-2">
-        <Music size={28} /> TextMyTrack DJ Dashboard
-      </h1>
+      {/* Header with Logout */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold text-[#ff4da3] drop-shadow-glow flex items-center gap-2">
+          <Music size={28} /> TextMyTrack DJ Dashboard
+        </h1>
+        
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1e1e2d] hover:bg-[#2a2a40] border border-[#2a2a40] transition text-gray-300 hover:text-white"
+        >
+          <LogOut size={18} />
+          Logout
+        </button>
+      </div>
 
+      {/* DJ Info Card */}
+      {djProfile && (
+        <div className="mb-6 bg-[#141420] p-5 rounded-xl border border-[#1e1e2d] shadow-glow">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#4da3ff]/20 p-3 rounded-lg">
+                <Phone size={24} className="text-[#4da3ff]" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-400">Your TextMyTrack Number</p>
+                <p className="text-2xl font-bold text-[#4da3ff]">
+                  {formatPhoneNumber(djProfile.twilio_number)}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-400">Logged in as</p>
+              <p className="text-gray-200">{user?.email || djProfile.email}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Requests Section */}
       {loading ? (
         <p className="text-gray-400">Loading requests...</p>
       ) : requests.length === 0 ? (
@@ -75,7 +172,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-semibold">
                   {req.title} —{" "}
-                  <span className="text-brand-blue">{req.artist}</span>
+                  <span className="text-[#4da3ff]">{req.artist}</span>
                 </h2>
 
                 <span
@@ -95,15 +192,15 @@ export default function Dashboard() {
 
               <p className="text-gray-300 mb-2">
                 Genre:{" "}
-                <span className="text-brand-purple font-medium">
+                <span className="text-[#b366ff] font-medium">
                   {req.genre}
                 </span>{" "}
                 • Energy:{" "}
-                <span className="text-brand-pink font-medium">
+                <span className="text-[#ff4da3] font-medium">
                   {req.energy}
                 </span>{" "}
                 • Mood:{" "}
-                <span className="text-brand-blue font-medium">
+                <span className="text-[#4da3ff] font-medium">
                   {req.mood}
                 </span>
               </p>
