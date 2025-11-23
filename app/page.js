@@ -34,7 +34,7 @@ export default function Dashboard() {
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
-  const [videoModal, setVideoModal] = useState(null); // NEW: For embedded player modal
+  const [videoModal, setVideoModal] = useState(null);
 
   // Helper function to get the appropriate URL based on platform
   function getPlatformUrl(request) {
@@ -49,7 +49,7 @@ export default function Dashboard() {
   // Helper function to open video (modal for YouTube, direct link for Spotify)
   function handleOpenVideo(request) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
-      // Open YouTube in modal with embedded player (supports mute!)
+      // Open YouTube in modal with embedded player (muted by default)
       setVideoModal(request.youtube_video_id);
     } else {
       // For Spotify or if no video_id, open in new tab
@@ -177,6 +177,21 @@ export default function Dashboard() {
     }
   }
 
+  async function clearAllRequests() {
+    if (!confirm("Are you sure you want to delete ALL requests? This cannot be undone.")) return;
+    
+    const deletePromises = filteredRequests.map((req) =>
+      fetch("/api/requests-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: req.id }),
+      })
+    );
+
+    await Promise.all(deletePromises);
+    if (user) fetchRequests(user.id);
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     window.location.href = "/login";
@@ -236,7 +251,7 @@ export default function Dashboard() {
               <iframe
                 width="100%"
                 height="100%"
-                src={`https://www.youtube.com/embed/${videoModal}?autoplay=1&mute=1&rel=0`}
+                src={`https://www.youtube.com/embed/${videoModal}?autoplay=1&mute=1&rel=0&modestbranding=1`}
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
@@ -246,7 +261,7 @@ export default function Dashboard() {
             <div className="p-3 flex items-center justify-between bg-[#141420]">
               <div className="flex items-center gap-2 text-sm text-gray-400">
                 <VolumeX size={16} />
-                <span>Video started muted - Click to unmute</span>
+                <span>Video started muted - Click video to unmute</span>
               </div>
               <button
                 onClick={() => setVideoModal(null)}
@@ -357,21 +372,34 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {["all", "pending", "approved", "played"].map((status) => (
+        {/* Filter Pills with Clear All Button */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {["all", "pending", "approved", "played"].map((status) => (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(status)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  filterStatus === status
+                    ? "bg-[#ff4da3] text-white shadow-lg shadow-[#ff4da3]/30"
+                    : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-300 border border-white/10"
+                }`}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Clear All Button */}
+          {filteredRequests.length > 0 && (
             <button
-              key={status}
-              onClick={() => setFilterStatus(status)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                filterStatus === status
-                  ? "bg-[#ff4da3] text-white shadow-lg shadow-[#ff4da3]/30"
-                  : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-300 border border-white/10"
-              }`}
+              onClick={clearAllRequests}
+              className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
             >
-              {status.charAt(0).toUpperCase() + status.slice(1)}
+              <Trash2 size={14} className="inline mr-1" />
+              Clear All ({filteredRequests.length})
             </button>
-          ))}
+          )}
         </div>
 
         {/* Request Cards */}
@@ -498,20 +526,26 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Actions */}
+                        {/* Actions - Conditional rendering based on status */}
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => updateStatus(req.id, "approved")}
-                            className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
-                          >
-                            <Check size={14} className="inline mr-1" /> Approve
-                          </button>
-                          <button
-                            onClick={() => updateStatus(req.id, "played")}
-                            className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
-                          >
-                            <ArrowRight size={14} className="inline mr-1" /> Played
-                          </button>
+                          {req.status === "pending" && (
+                            <button
+                              onClick={() => updateStatus(req.id, "approved")}
+                              className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
+                            >
+                              <Check size={14} className="inline mr-1" /> Approve
+                            </button>
+                          )}
+                          
+                          {(req.status === "pending" || req.status === "approved") && (
+                            <button
+                              onClick={() => updateStatus(req.id, "played")}
+                              className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
+                            >
+                              <ArrowRight size={14} className="inline mr-1" /> Played
+                            </button>
+                          )}
+                          
                           <button
                             onClick={() => deleteRequest(req.id)}
                             className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
