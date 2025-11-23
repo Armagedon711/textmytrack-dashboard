@@ -17,6 +17,8 @@ import {
   TrendingUp,
   Activity,
   Sparkles,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -30,6 +32,12 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
+
+  // Helper function to add mute parameter to YouTube URLs
+  function getMutedYouTubeUrl(url) {
+    if (!url) return '';
+    return url.includes('?') ? `${url}&mute=1` : `${url}?mute=1`;
+  }
 
   // Fetch DJ profile with Twilio number
   async function fetchDjProfile(userId) {
@@ -222,6 +230,11 @@ export default function Dashboard() {
                     <p className="text-3xl font-bold tracking-tight text-white">
                       {formatPhoneNumber(djProfile.twilio_number)}
                     </p>
+                  ) : profileError ? (
+                    <p className="text-lg text-red-400 flex items-center gap-2">
+                      <AlertCircle size={18} />
+                      {profileError}
+                    </p>
                   ) : (
                     <p className="text-gray-400">Loading...</p>
                   )}
@@ -250,7 +263,7 @@ export default function Dashboard() {
                 <stat.icon size={20} className={`${stat.color} opacity-60`} />
                 <Sparkles size={14} className="text-gray-600 group-hover:text-gray-500 transition-colors" />
               </div>
-              <p className="text-3xl font-bold mb-1" style={{ color: stat.color === "text-white" ? "#fff" : undefined }}>
+              <p className={`text-3xl font-bold mb-1 ${stat.color}`}>
                 {stat.value}
               </p>
               <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
@@ -320,7 +333,7 @@ export default function Dashboard() {
                       <div className="flex-1 min-w-0">
                         {req.url ? (
                           <a
-                            href={req.url}
+                            href={getMutedYouTubeUrl(req.url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group/link inline-flex items-center gap-2"
@@ -328,7 +341,10 @@ export default function Dashboard() {
                             <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
                               {req.title}
                             </h2>
-                            <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
+                            <div className="flex items-center gap-1">
+                              <VolumeX size={14} className="text-gray-600 group-hover/link:text-gray-500" />
+                              <ExternalLink size={16} className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors" />
+                            </div>
                           </a>
                         ) : (
                           <h2 className="text-xl font-bold text-white">{req.title}</h2>
