@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import {
   Check,
@@ -12,6 +12,7 @@ import {
   Clock,
   User,
   Play,
+  Volume2,
   VolumeX,
   ListMusic,
   Disc3,
@@ -19,6 +20,7 @@ import {
   RefreshCw,
   CheckCircle2,
   Circle,
+  SkipForward,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -73,7 +75,15 @@ export default function Dashboard() {
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
-  const [videoModal, setVideoModal] = useState(null);
+  
+  // Video modal state
+  const [videoModal, setVideoModal] = useState(null); // Current video ID
+  const [currentPlayingRequest, setCurrentPlayingRequest] = useState(null); // Full request object
+  const [isMuted, setIsMuted] = useState(true); // Mute toggle state
+  const [autoPlay, setAutoPlay] = useState(true); // Auto-play next song
+  
+  const playerRef = useRef(null);
+  const playerReady = useRef(false);
 
   // Helper functions
   function getPlatformUrl(request) {
@@ -91,13 +101,153 @@ export default function Dashboard() {
     }
   }
 
+  // Get pending requests (queue)
+  const pendingRequests = requests.filter(
+    (r) => r.status === "pending" || r.status === "approved"
+  );
+
+  // Find next song in queue
+  const getNextSong = useCallback(() => {
+    if (!currentPlayingRequest) return pendingRequests[0] || null;
+    
+    const currentIndex = pendingRequests.findIndex(
+      (r) => r.id === currentPlayingRequest.id
+    );
+    
+    if (currentIndex === -1 || currentIndex >= pendingRequests.length - 1) {
+      // Current song not in pending list or is last song
+      return pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
+    }
+    
+    return pendingRequests[currentIndex + 1] || null;
+  }, [currentPlayingRequest, pendingRequests]);
+
+  // Mark song as played and optionally play next
+  const markAsPlayedAndNext = useCallback(async (requestId, playNext = true) => {
+    // Mark current as played
+    await updateStatus(requestId, "played");
+    
+    if (playNext && autoPlay) {
+      const nextSong = getNextSong();
+      if (nextSong && nextSong.youtube_video_id) {
+        setCurrentPlayingRequest(nextSong);
+        setVideoModal(nextSong.youtube_video_id);
+      } else {
+        // No more songs in queue
+        setVideoModal(null);
+        setCurrentPlayingRequest(null);
+      }
+    } else {
+      setVideoModal(null);
+      setCurrentPlayingRequest(null);
+    }
+  }, [autoPlay, getNextSong]);
+
+  // Handle video end - called from YouTube API
+  const handleVideoEnd = useCallback(() => {
+    if (currentPlayingRequest) {
+      markAsPlayedAndNext(currentPlayingRequest.id, true);
+    }
+  }, [currentPlayingRequest, markAsPlayedAndNext]);
+
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (typeof window !== "undefined" && !window.YT) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+  }, []);
+
+  // Initialize YouTube player when modal opens
+  useEffect(() => {
+    if (!videoModal) {
+      playerReady.current = false;
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+      return;
+    }
+
+    const initPlayer = () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+      }
+
+      playerRef.current = new window.YT.Player("youtube-player", {
+        videoId: videoModal,
+        playerVars: {
+          autoplay: 1,
+          mute: isMuted ? 1 : 0,
+          rel: 0,
+          modestbranding: 1,
+        },
+        events: {
+          onReady: (event) => {
+            playerReady.current = true;
+            if (!isMuted) {
+              event.target.unMute();
+            }
+          },
+          onStateChange: (event) => {
+            // YT.PlayerState.ENDED = 0
+            if (event.data === 0) {
+              handleVideoEnd();
+            }
+          },
+        },
+      });
+    };
+
+    if (window.YT && window.YT.Player) {
+      // Small delay to ensure DOM is ready
+      setTimeout(initPlayer, 100);
+    } else {
+      window.onYouTubeIframeAPIReady = initPlayer;
+    }
+
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+    };
+  }, [videoModal, handleVideoEnd]);
+
+  // Update mute state on player
+  useEffect(() => {
+    if (playerRef.current && playerReady.current) {
+      if (isMuted) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+      }
+    }
+  }, [isMuted]);
+
   function handleOpenVideo(request) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
+      setCurrentPlayingRequest(request);
       setVideoModal(request.youtube_video_id);
     } else {
       const url = getPlatformUrl(request);
       if (url) window.open(url, "_blank");
     }
+  }
+
+  // Skip to next song manually
+  function handleSkipToNext() {
+    if (currentPlayingRequest) {
+      markAsPlayedAndNext(currentPlayingRequest.id, true);
+    }
+  }
+
+  // Close modal without marking as played
+  function handleCloseModal() {
+    setVideoModal(null);
+    setCurrentPlayingRequest(null);
   }
 
   // Data fetching
@@ -205,7 +355,6 @@ export default function Dashboard() {
       });
       const result = await res.json();
       if (result.success) {
-        // Update local state immediately for better UX
         setRequests((prev) =>
           prev.map((req) => (req.id === id ? { ...req, status } : req))
         );
@@ -239,6 +388,30 @@ export default function Dashboard() {
     }
   }
 
+  async function deleteAllFiltered() {
+    const count = filteredRequests.length;
+    if (!confirm(`Delete all ${count} ${filterStatus === "pending" ? "requests" : filterStatus === "played" ? "played songs" : "items"}? This cannot be undone.`)) return;
+    
+    try {
+      const deletePromises = filteredRequests.map((req) =>
+        fetch("/api/requests-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: req.id }),
+        })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      // Remove all deleted requests from state
+      const deletedIds = new Set(filteredRequests.map((r) => r.id));
+      setRequests((prev) => prev.filter((req) => !deletedIds.has(req.id)));
+    } catch (err) {
+      console.error("Error deleting requests:", err);
+      alert("Error deleting some requests. Please refresh and try again.");
+    }
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     window.location.href = "/login";
@@ -267,11 +440,10 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
-  // Filtered data - treat both "pending" and "approved" as "Requests"
+  // Filtered data
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
-      // "Requests" tab shows both pending and approved (anything not played)
       return req.status === "pending" || req.status === "approved";
     }
     return req.status === filterStatus;
@@ -286,6 +458,7 @@ export default function Dashboard() {
   };
 
   const currentPlatform = PLATFORMS[selectedPlatform];
+  const nextSong = getNextSong();
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] text-white">
@@ -299,33 +472,105 @@ export default function Dashboard() {
       {videoModal && (
         <div
           className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          onClick={() => setVideoModal(null)}
+          onClick={handleCloseModal}
         >
           <div
             className="bg-[#16161f] rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl border border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="aspect-video bg-black">
-              <iframe
-                width="100%"
-                height="100%"
-                src={`https://www.youtube.com/embed/${videoModal}?autoplay=1&mute=1&rel=0&modestbranding=1`}
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-            <div className="p-4 flex items-center justify-between border-t border-white/5">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <VolumeX size={16} />
-                <span>Click video to unmute</span>
+            {/* Now Playing Header */}
+            {currentPlayingRequest && (
+              <div className="p-4 border-b border-white/5 bg-[#12121a]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
+                      <Play size={18} className="text-pink-400 fill-pink-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500 uppercase tracking-wider">Now Playing</p>
+                      <h3 className="font-semibold text-white truncate">{currentPlayingRequest.title}</h3>
+                      <p className="text-sm text-gray-400 truncate">{currentPlayingRequest.artist}</p>
+                    </div>
+                  </div>
+                  {nextSong && (
+                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
+                      <span>Up next:</span>
+                      <span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                onClick={() => setVideoModal(null)}
-                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all text-sm font-medium flex items-center gap-2"
-              >
-                <X size={16} /> Close
-              </button>
+            )}
+
+            {/* YouTube Player */}
+            <div className="aspect-video bg-black">
+              <div id="youtube-player" className="w-full h-full" />
+            </div>
+
+            {/* Controls */}
+            <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a]">
+              <div className="flex items-center gap-4">
+                {/* Mute Toggle */}
+                <button
+                  onClick={() => setIsMuted(!isMuted)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                    isMuted
+                      ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                      : "bg-green-500/20 text-green-400 border border-green-500/30"
+                  }`}
+                >
+                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  <span className="text-sm font-medium">
+                    {isMuted ? "Muted" : "Sound On"}
+                  </span>
+                </button>
+
+                {/* Auto-play Toggle */}
+                <button
+                  onClick={() => setAutoPlay(!autoPlay)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                    autoPlay
+                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-gray-400 hover:bg-white/10"
+                  }`}
+                >
+                  <SkipForward size={18} />
+                  <span className="text-sm font-medium">
+                    {autoPlay ? "Auto-play On" : "Auto-play Off"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Skip to Next */}
+                {nextSong && (
+                  <button
+                    onClick={handleSkipToNext}
+                    className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
+                  >
+                    <SkipForward size={16} />
+                    <span className="text-sm font-medium hidden sm:inline">Skip</span>
+                  </button>
+                )}
+
+                {/* Mark as Played & Close */}
+                <button
+                  onClick={() => currentPlayingRequest && markAsPlayedAndNext(currentPlayingRequest.id, false)}
+                  className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
+                >
+                  <Check size={16} />
+                  <span className="text-sm font-medium hidden sm:inline">Mark Played</span>
+                </button>
+
+                {/* Close */}
+                <button
+                  onClick={handleCloseModal}
+                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
+                >
+                  <X size={16} />
+                  <span className="text-sm font-medium">Close</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -476,46 +721,62 @@ export default function Dashboard() {
 
           {/* Main Content - Right Columns */}
           <div className="lg:col-span-3">
-            {/* Filter Tabs - Simplified to Requests, Played, All */}
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-              {[
-                {
-                  key: "pending",
-                  label: "Requests",
-                  count: stats.requests,
-                  color: "yellow",
-                },
-                {
-                  key: "played",
-                  label: "Played",
-                  count: stats.played,
-                  color: "green",
-                },
-                { key: "all", label: "All", count: stats.total, color: "gray" },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setFilterStatus(tab.key)}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                    filterStatus === tab.key
-                      ? tab.color === "yellow"
-                        ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                        : tab.color === "green"
-                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-white/10 text-white border border-white/20"
-                      : "bg-white/5 text-gray-400 border border-transparent hover:bg-white/10"
-                  }`}
-                >
-                  {tab.label}
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-xs ${
-                      filterStatus === tab.key ? "bg-white/20" : "bg-white/10"
+            {/* Filter Tabs with Delete All */}
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                {[
+                  {
+                    key: "pending",
+                    label: "Requests",
+                    count: stats.requests,
+                    color: "yellow",
+                  },
+                  {
+                    key: "played",
+                    label: "Played",
+                    count: stats.played,
+                    color: "green",
+                  },
+                  { key: "all", label: "All", count: stats.total, color: "gray" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setFilterStatus(tab.key)}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                      filterStatus === tab.key
+                        ? tab.color === "yellow"
+                          ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                          : tab.color === "green"
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-white/10 text-white border border-white/20"
+                        : "bg-white/5 text-gray-400 border border-transparent hover:bg-white/10"
                     }`}
                   >
-                    {tab.count}
+                    {tab.label}
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-xs ${
+                        filterStatus === tab.key ? "bg-white/20" : "bg-white/10"
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Delete All Button */}
+              {filteredRequests.length > 0 && (
+                <button
+                  onClick={deleteAllFiltered}
+                  className="flex-shrink-0 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all text-sm font-medium flex items-center gap-2"
+                >
+                  <Trash2 size={16} />
+                  <span className="hidden sm:inline">Clear All</span>
+                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-xs">
+                    {filteredRequests.length}
                   </span>
                 </button>
-              ))}
+              )}
             </div>
 
             {/* Request List */}
@@ -546,11 +807,16 @@ export default function Dashboard() {
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
                   const isPlayed = req.status === "played";
+                  const isCurrentlyPlaying = currentPlayingRequest?.id === req.id;
 
                   return (
                     <div
                       key={req.id}
-                      className="group p-4 rounded-2xl bg-[#12121a] border border-white/5 hover:border-white/10 transition-all"
+                      className={`group p-4 rounded-2xl border transition-all ${
+                        isCurrentlyPlaying
+                          ? "bg-pink-500/10 border-pink-500/30"
+                          : "bg-[#12121a] border-white/5 hover:border-white/10"
+                      }`}
                     >
                       <div className="flex items-center gap-4">
                         {/* Queue Number */}
@@ -585,12 +851,21 @@ export default function Dashboard() {
                               />
                             </button>
                           )}
+                          {/* Currently playing indicator */}
+                          {isCurrentlyPlaying && (
+                            <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
+                              <div className="flex gap-0.5">
+                                <div className="w-1 h-4 bg-white rounded-full animate-pulse" />
+                                <div className="w-1 h-4 bg-white rounded-full animate-pulse delay-75" />
+                                <div className="w-1 h-4 bg-white rounded-full animate-pulse delay-150" />
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Song Info */}
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <div className="flex items-start justify-between gap-3">
-                            {/* Title and Artist - with proper truncation */}
                             <div className="min-w-0 flex-1 overflow-hidden">
                               {hasUrl ? (
                                 <button
@@ -618,18 +893,19 @@ export default function Dashboard() {
                             {/* Status Badge */}
                             <span
                               className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                isPlayed
+                                isCurrentlyPlaying
+                                  ? "bg-pink-500/20 text-pink-400"
+                                  : isPlayed
                                   ? "bg-green-500/10 text-green-400"
                                   : "bg-yellow-500/10 text-yellow-400"
                               }`}
                             >
-                              {isPlayed ? "Played" : "Request"}
+                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : "Request"}
                             </span>
                           </div>
 
                           {/* Meta Row */}
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
-                            {/* Tags */}
                             <div className="flex items-center gap-1.5">
                               {req.genre && req.genre !== "Unknown" && (
                                 <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
@@ -651,7 +927,6 @@ export default function Dashboard() {
 
                             <span className="text-gray-600">•</span>
 
-                            {/* Requester & Time */}
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <User size={12} />
                               <span className="truncate max-w-[100px]">
@@ -667,7 +942,6 @@ export default function Dashboard() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* Preview Button */}
                           {hasUrl && (
                             <button
                               onClick={() => handleOpenVideo(req)}
@@ -681,10 +955,8 @@ export default function Dashboard() {
                             </button>
                           )}
 
-                          {/* Status Actions */}
                           {!isPlayed ? (
                             <>
-                              {/* Checkmark marks as PLAYED */}
                               <button
                                 onClick={() => updateStatus(req.id, "played")}
                                 className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all"
