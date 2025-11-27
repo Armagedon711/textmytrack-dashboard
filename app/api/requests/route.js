@@ -76,6 +76,13 @@ export async function POST(request) {
       url,
       thumbnail,
       dj_id,
+      // New multi-platform fields
+      platform,
+      youtube_url,
+      youtube_video_id,
+      spotify_url,
+      apple_url,
+      soundcloud_url,
     } = body;
 
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
@@ -92,6 +99,26 @@ export async function POST(request) {
         ? explicit
         : "Undetermined";
 
+    // Extract YouTube video ID from URL if not provided
+    let videoId = youtube_video_id || null;
+    const ytUrl = youtube_url || url;
+    if (!videoId && ytUrl) {
+      // Extract from various YouTube URL formats
+      const patterns = [
+        /youtu\.be\/([^?]+)/,
+        /[?&]v=([^&]+)/,
+        /shorts\/([^?]+)/,
+        /embed\/([^?]+)/
+      ];
+      for (const pattern of patterns) {
+        const match = ytUrl.match(pattern);
+        if (match) {
+          videoId = match[1];
+          break;
+        }
+      }
+    }
+
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
       artist,
@@ -99,12 +126,19 @@ export async function POST(request) {
       mood: mood || null,
       energy: energy || null,
       explicit: explicitValue,
-      url: url || null,
+      url: url || youtube_url || null, // Keep legacy url field populated
       thumbnail: thumbnail || null,
       requestedBy,
       requestedAt,
       status: "pending",
       dj_id,
+      // New multi-platform fields
+      platform: platform || "YouTube",
+      youtube_url: youtube_url || url || null,
+      youtube_video_id: videoId,
+      spotify_url: spotify_url || null,
+      apple_url: apple_url || null,
+      soundcloud_url: soundcloud_url || null,
     });
 
     if (error) {
