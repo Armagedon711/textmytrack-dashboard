@@ -254,19 +254,20 @@ export default function Dashboard() {
         events: {
           onReady: (event) => {
             playerReady.current = true;
+
+            // Always autoplay muted (browser requirement)
+            event.target.mute();
+            event.target.playVideo();
+
             setIsPlaying(true);
+
+            // After autoplay succeeds, THEN unmute if needed
             if (!isMutedRef.current) {
-              event.target.unMute();
-            }
-          },
-          onStateChange: (event) => {
-            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2
-            if (event.data === 0) {
-              handleVideoEnd();
-            } else if (event.data === 1) {
-              setIsPlaying(true);
-            } else if (event.data === 2) {
-              setIsPlaying(false);
+              setTimeout(() => {
+                try {
+                  event.target.unMute();
+                } catch {}
+              }, 300);
             }
           },
         },
