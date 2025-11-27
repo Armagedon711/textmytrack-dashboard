@@ -12,6 +12,7 @@ import {
   Clock,
   User,
   Play,
+  Pause,
   Volume2,
   VolumeX,
   ListMusic,
@@ -21,6 +22,8 @@ import {
   CheckCircle2,
   Circle,
   SkipForward,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -75,15 +78,40 @@ export default function Dashboard() {
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
-  
+
   // Video modal state
-  const [videoModal, setVideoModal] = useState(null); // Current video ID
-  const [currentPlayingRequest, setCurrentPlayingRequest] = useState(null); // Full request object
-  const [isMuted, setIsMuted] = useState(true); // Mute toggle state
-  const [autoPlay, setAutoPlay] = useState(true); // Auto-play next song
-  
+  const [videoModal, setVideoModal] = useState(null);
+  const [currentPlayingRequest, setCurrentPlayingRequest] = useState(null);
+  const [isMuted, setIsMuted] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+
+  // Refs for stable references
   const playerRef = useRef(null);
   const playerReady = useRef(false);
+  const currentVideoId = useRef(null);
+  const requestsRef = useRef(requests);
+  const currentPlayingRequestRef = useRef(currentPlayingRequest);
+  const autoPlayRef = useRef(autoPlay);
+  const isMutedRef = useRef(isMuted);
+
+  // Keep refs in sync
+  useEffect(() => {
+    requestsRef.current = requests;
+  }, [requests]);
+
+  useEffect(() => {
+    currentPlayingRequestRef.current = currentPlayingRequest;
+  }, [currentPlayingRequest]);
+
+  useEffect(() => {
+    autoPlayRef.current = autoPlay;
+  }, [autoPlay]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // Helper functions
   function getPlatformUrl(request) {
@@ -101,56 +129,77 @@ export default function Dashboard() {
     }
   }
 
-  // Get pending requests (queue)
-  const pendingRequests = requests.filter(
-    (r) => r.status === "pending" || r.status === "approved"
-  );
+  // Get next song using ref to avoid dependency issues
+  const getNextSongFromRef = useCallback(() => {
+    const currentRequests = requestsRef.current;
+    const currentPlaying = currentPlayingRequestRef.current;
 
-  // Find next song in queue
-  const getNextSong = useCallback(() => {
-    if (!currentPlayingRequest) return pendingRequests[0] || null;
-    
-    const currentIndex = pendingRequests.findIndex(
-      (r) => r.id === currentPlayingRequest.id
+    const pendingReqs = currentRequests.filter(
+      (r) => r.status === "pending" || r.status === "approved"
     );
-    
-    if (currentIndex === -1 || currentIndex >= pendingRequests.length - 1) {
-      // Current song not in pending list or is last song
-      return pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
-    }
-    
-    return pendingRequests[currentIndex + 1] || null;
-  }, [currentPlayingRequest, pendingRequests]);
 
-  // Mark song as played and optionally play next
-  const markAsPlayedAndNext = useCallback(async (requestId, playNext = true) => {
+    if (!currentPlaying) return pendingReqs[0] || null;
+
+    const currentIndex = pendingReqs.findIndex(
+      (r) => r.id === currentPlaying.id
+    );
+
+    if (currentIndex === -1 || currentIndex >= pendingReqs.length - 1) {
+      return pendingReqs.find((r) => r.id !== currentPlaying.id) || null;
+    }
+
+    return pendingReqs[currentIndex + 1] || null;
+  }, []);
+
+  // Update status function (stable reference)
+  const updateStatusDirect = useCallback(async (id, status) => {
+    try {
+      const res = await fetch("/api/requests-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setRequests((prev) =>
+          prev.map((req) => (req.id === id ? { ...req, status } : req))
+        );
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("Error updating status:", err);
+      return false;
+    }
+  }, []);
+
+  // Handle video end - uses refs to avoid stale closures
+  const handleVideoEnd = useCallback(() => {
+    const currentPlaying = currentPlayingRequestRef.current;
+    if (!currentPlaying) return;
+
     // Mark current as played
-    await updateStatus(requestId, "played");
-    
-    if (playNext && autoPlay) {
-      const nextSong = getNextSong();
+    updateStatusDirect(currentPlaying.id, "played");
+
+    if (autoPlayRef.current) {
+      const nextSong = getNextSongFromRef();
       if (nextSong && nextSong.youtube_video_id) {
         setCurrentPlayingRequest(nextSong);
         setVideoModal(nextSong.youtube_video_id);
+        currentVideoId.current = nextSong.youtube_video_id;
       } else {
-        // No more songs in queue
         setVideoModal(null);
         setCurrentPlayingRequest(null);
+        currentVideoId.current = null;
       }
     } else {
       setVideoModal(null);
       setCurrentPlayingRequest(null);
+      currentVideoId.current = null;
     }
-  }, [autoPlay, getNextSong]);
+  }, [getNextSongFromRef, updateStatusDirect]);
 
-  // Handle video end - called from YouTube API
-  const handleVideoEnd = useCallback(() => {
-    if (currentPlayingRequest) {
-      markAsPlayedAndNext(currentPlayingRequest.id, true);
-    }
-  }, [currentPlayingRequest, markAsPlayedAndNext]);
-
-  // Load YouTube IFrame API
+  // Load YouTube IFrame API once
   useEffect(() => {
     if (typeof window !== "undefined" && !window.YT) {
       const tag = document.createElement("script");
@@ -160,58 +209,92 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Initialize YouTube player when modal opens
+  // Initialize/update YouTube player - only when videoModal changes to a NEW video
   useEffect(() => {
     if (!videoModal) {
       playerReady.current = false;
+      currentVideoId.current = null;
       if (playerRef.current) {
-        playerRef.current.destroy();
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
         playerRef.current = null;
       }
       return;
     }
 
+    // Don't reinitialize if same video
+    if (currentVideoId.current === videoModal && playerRef.current) {
+      return;
+    }
+
+    currentVideoId.current = videoModal;
+
     const initPlayer = () => {
+      // Destroy existing player if any
       if (playerRef.current) {
-        playerRef.current.destroy();
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+        playerRef.current = null;
       }
+
+      const playerElement = document.getElementById("youtube-player");
+      if (!playerElement) return;
 
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
         playerVars: {
           autoplay: 1,
-          mute: isMuted ? 1 : 0,
+          mute: isMutedRef.current ? 1 : 0,
           rel: 0,
           modestbranding: 1,
+          playsinline: 1,
         },
         events: {
           onReady: (event) => {
             playerReady.current = true;
-            if (!isMuted) {
+            setIsPlaying(true);
+            if (!isMutedRef.current) {
               event.target.unMute();
             }
           },
           onStateChange: (event) => {
-            // YT.PlayerState.ENDED = 0
+            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2
             if (event.data === 0) {
               handleVideoEnd();
+            } else if (event.data === 1) {
+              setIsPlaying(true);
+            } else if (event.data === 2) {
+              setIsPlaying(false);
             }
           },
         },
       });
     };
 
-    if (window.YT && window.YT.Player) {
-      // Small delay to ensure DOM is ready
-      setTimeout(initPlayer, 100);
-    } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
-    }
+    // Wait for YT API and DOM element
+    const checkAndInit = () => {
+      if (window.YT && window.YT.Player) {
+        setTimeout(initPlayer, 100);
+      } else {
+        window.onYouTubeIframeAPIReady = () => {
+          setTimeout(initPlayer, 100);
+        };
+      }
+    };
+
+    checkAndInit();
 
     return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
-        playerRef.current = null;
+      // Only cleanup if closing modal entirely
+      if (!videoModal) {
+        if (playerRef.current) {
+          try {
+            playerRef.current.destroy();
+          } catch (e) {}
+          playerRef.current = null;
+        }
       }
     };
   }, [videoModal, handleVideoEnd]);
@@ -219,18 +302,37 @@ export default function Dashboard() {
   // Update mute state on player
   useEffect(() => {
     if (playerRef.current && playerReady.current) {
-      if (isMuted) {
-        playerRef.current.mute();
-      } else {
-        playerRef.current.unMute();
-      }
+      try {
+        if (isMuted) {
+          playerRef.current.mute();
+        } else {
+          playerRef.current.unMute();
+        }
+      } catch (e) {}
     }
   }, [isMuted]);
 
+  // Play/Pause control
+  const togglePlayPause = useCallback(() => {
+    if (playerRef.current && playerReady.current) {
+      try {
+        if (isPlaying) {
+          playerRef.current.pauseVideo();
+        } else {
+          playerRef.current.playVideo();
+        }
+      } catch (e) {}
+    }
+  }, [isPlaying]);
+
   function handleOpenVideo(request) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
-      setCurrentPlayingRequest(request);
-      setVideoModal(request.youtube_video_id);
+      // Only change if different video
+      if (currentVideoId.current !== request.youtube_video_id) {
+        setCurrentPlayingRequest(request);
+        setVideoModal(request.youtube_video_id);
+      }
+      setIsMinimized(false);
     } else {
       const url = getPlatformUrl(request);
       if (url) window.open(url, "_blank");
@@ -239,8 +341,18 @@ export default function Dashboard() {
 
   // Skip to next song manually
   function handleSkipToNext() {
-    if (currentPlayingRequest) {
-      markAsPlayedAndNext(currentPlayingRequest.id, true);
+    const currentPlaying = currentPlayingRequestRef.current;
+    if (currentPlaying) {
+      updateStatusDirect(currentPlaying.id, "played");
+    }
+
+    const nextSong = getNextSongFromRef();
+    if (nextSong && nextSong.youtube_video_id) {
+      setCurrentPlayingRequest(nextSong);
+      setVideoModal(nextSong.youtube_video_id);
+    } else {
+      setVideoModal(null);
+      setCurrentPlayingRequest(null);
     }
   }
 
@@ -248,6 +360,20 @@ export default function Dashboard() {
   function handleCloseModal() {
     setVideoModal(null);
     setCurrentPlayingRequest(null);
+    setIsMinimized(false);
+    currentVideoId.current = null;
+  }
+
+  // Mark as played and close
+  function handleMarkPlayedAndClose() {
+    const currentPlaying = currentPlayingRequestRef.current;
+    if (currentPlaying) {
+      updateStatusDirect(currentPlaying.id, "played");
+    }
+    setVideoModal(null);
+    setCurrentPlayingRequest(null);
+    setIsMinimized(false);
+    currentVideoId.current = null;
   }
 
   // Data fetching
@@ -339,32 +465,20 @@ export default function Dashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "requests" },
-        () => fetchRequests(user.id)
+        () => {
+          // Fetch requests without affecting the player
+          fetchRequests(user.id);
+        }
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
-  // Actions
+  // Wrapper for updateStatus with UI feedback
   async function updateStatus(id, status) {
-    try {
-      const res = await fetch("/api/requests-status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
-      const result = await res.json();
-      if (result.success) {
-        setRequests((prev) =>
-          prev.map((req) => (req.id === id ? { ...req, status } : req))
-        );
-      } else {
-        console.error("Failed to update status:", result.error);
-        alert("Failed to update status: " + (result.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error("Error updating status:", err);
-      alert("Error updating status. Please try again.");
+    const success = await updateStatusDirect(id, status);
+    if (!success) {
+      alert("Failed to update status. Please try again.");
     }
   }
 
@@ -390,8 +504,19 @@ export default function Dashboard() {
 
   async function deleteAllFiltered() {
     const count = filteredRequests.length;
-    if (!confirm(`Delete all ${count} ${filterStatus === "pending" ? "requests" : filterStatus === "played" ? "played songs" : "items"}? This cannot be undone.`)) return;
-    
+    if (
+      !confirm(
+        `Delete all ${count} ${
+          filterStatus === "pending"
+            ? "requests"
+            : filterStatus === "played"
+            ? "played songs"
+            : "items"
+        }? This cannot be undone.`
+      )
+    )
+      return;
+
     try {
       const deletePromises = filteredRequests.map((req) =>
         fetch("/api/requests-delete", {
@@ -400,10 +525,9 @@ export default function Dashboard() {
           body: JSON.stringify({ id: req.id }),
         })
       );
-      
+
       await Promise.all(deletePromises);
-      
-      // Remove all deleted requests from state
+
       const deletedIds = new Set(filteredRequests.map((r) => r.id));
       setRequests((prev) => prev.filter((req) => !deletedIds.has(req.id)));
     } catch (err) {
@@ -449,16 +573,29 @@ export default function Dashboard() {
     return req.status === filterStatus;
   });
 
+  const pendingRequests = requests.filter(
+    (r) => r.status === "pending" || r.status === "approved"
+  );
+
   const stats = {
     total: requests.length,
-    requests: requests.filter(
-      (r) => r.status === "pending" || r.status === "approved"
-    ).length,
+    requests: pendingRequests.length,
     played: requests.filter((r) => r.status === "played").length,
   };
 
   const currentPlatform = PLATFORMS[selectedPlatform];
-  const nextSong = getNextSong();
+
+  // Get next song for display
+  const nextSong = (() => {
+    if (!currentPlayingRequest) return pendingRequests[0] || null;
+    const currentIndex = pendingRequests.findIndex(
+      (r) => r.id === currentPlayingRequest.id
+    );
+    if (currentIndex === -1 || currentIndex >= pendingRequests.length - 1) {
+      return pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
+    }
+    return pendingRequests[currentIndex + 1] || null;
+  })();
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] text-white">
@@ -468,11 +605,11 @@ export default function Dashboard() {
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* Video Modal */}
-      {videoModal && (
+      {/* Full Video Modal */}
+      {videoModal && !isMinimized && (
         <div
           className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          onClick={handleCloseModal}
+          onClick={() => setIsMinimized(true)}
         >
           <div
             className="bg-[#16161f] rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl border border-white/10"
@@ -487,15 +624,23 @@ export default function Dashboard() {
                       <Play size={18} className="text-pink-400 fill-pink-400" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs text-gray-500 uppercase tracking-wider">Now Playing</p>
-                      <h3 className="font-semibold text-white truncate">{currentPlayingRequest.title}</h3>
-                      <p className="text-sm text-gray-400 truncate">{currentPlayingRequest.artist}</p>
+                      <p className="text-xs text-gray-500 uppercase tracking-wider">
+                        Now Playing
+                      </p>
+                      <h3 className="font-semibold text-white truncate">
+                        {currentPlayingRequest.title}
+                      </h3>
+                      <p className="text-sm text-gray-400 truncate">
+                        {currentPlayingRequest.artist}
+                      </p>
                     </div>
                   </div>
                   {nextSong && (
                     <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
                       <span>Up next:</span>
-                      <span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span>
+                      <span className="text-gray-300 truncate max-w-[150px]">
+                        {nextSong.title}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -508,8 +653,20 @@ export default function Dashboard() {
             </div>
 
             {/* Controls */}
-            <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a]">
-              <div className="flex items-center gap-4">
+            <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a] flex-wrap gap-3">
+              <div className="flex items-center gap-2 sm:gap-4">
+                {/* Play/Pause */}
+                <button
+                  onClick={togglePlayPause}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+                >
+                  {isPlaying ? (
+                    <Pause size={18} className="text-white" />
+                  ) : (
+                    <Play size={18} className="text-white fill-white" />
+                  )}
+                </button>
+
                 {/* Mute Toggle */}
                 <button
                   onClick={() => setIsMuted(!isMuted)}
@@ -520,7 +677,7 @@ export default function Dashboard() {
                   }`}
                 >
                   {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                  <span className="text-sm font-medium">
+                  <span className="text-sm font-medium hidden sm:inline">
                     {isMuted ? "Muted" : "Sound On"}
                   </span>
                 </button>
@@ -535,8 +692,8 @@ export default function Dashboard() {
                   }`}
                 >
                   <SkipForward size={18} />
-                  <span className="text-sm font-medium">
-                    {autoPlay ? "Auto-play On" : "Auto-play Off"}
+                  <span className="text-sm font-medium hidden sm:inline">
+                    {autoPlay ? "Auto-play" : "Manual"}
                   </span>
                 </button>
               </div>
@@ -549,26 +706,40 @@ export default function Dashboard() {
                     className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
                   >
                     <SkipForward size={16} />
-                    <span className="text-sm font-medium hidden sm:inline">Skip</span>
+                    <span className="text-sm font-medium hidden sm:inline">
+                      Skip
+                    </span>
                   </button>
                 )}
 
                 {/* Mark as Played & Close */}
                 <button
-                  onClick={() => currentPlayingRequest && markAsPlayedAndNext(currentPlayingRequest.id, false)}
+                  onClick={handleMarkPlayedAndClose}
                   className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
                 >
                   <Check size={16} />
-                  <span className="text-sm font-medium hidden sm:inline">Mark Played</span>
+                  <span className="text-sm font-medium hidden sm:inline">
+                    Played
+                  </span>
+                </button>
+
+                {/* Minimize */}
+                <button
+                  onClick={() => setIsMinimized(true)}
+                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
+                >
+                  <Minimize2 size={16} />
+                  <span className="text-sm font-medium hidden sm:inline">
+                    Minimize
+                  </span>
                 </button>
 
                 {/* Close */}
                 <button
                   onClick={handleCloseModal}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all flex items-center gap-2"
                 >
                   <X size={16} />
-                  <span className="text-sm font-medium">Close</span>
                 </button>
               </div>
             </div>
@@ -576,7 +747,134 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+      {/* Minimized Player Bar */}
+      {videoModal && isMinimized && currentPlayingRequest && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#12121a] border-t border-white/10 shadow-2xl">
+          <div className="max-w-6xl mx-auto px-4 py-3">
+            <div className="flex items-center gap-4">
+              {/* Thumbnail */}
+              <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                {currentPlayingRequest.thumbnail ? (
+                  <img
+                    src={currentPlayingRequest.thumbnail}
+                    alt={currentPlayingRequest.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Music size={20} className="text-gray-600" />
+                  </div>
+                )}
+                {/* Playing indicator */}
+                <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
+                  <div className="flex gap-0.5">
+                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse" />
+                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse delay-75" />
+                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse delay-150" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Song Info */}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-white text-sm truncate">
+                  {currentPlayingRequest.title}
+                </h4>
+                <p className="text-xs text-gray-400 truncate">
+                  {currentPlayingRequest.artist}
+                </p>
+              </div>
+
+              {/* Mini Controls */}
+              <div className="flex items-center gap-2">
+                {/* Play/Pause */}
+                <button
+                  onClick={togglePlayPause}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+                >
+                  {isPlaying ? (
+                    <Pause size={18} className="text-white" />
+                  ) : (
+                    <Play size={18} className="text-white fill-white" />
+                  )}
+                </button>
+
+                {/* Mute Toggle */}
+                <button
+                  onClick={() => setIsMuted(!isMuted)}
+                  className={`p-2 rounded-lg transition-all ${
+                    isMuted
+                      ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                      : "bg-green-500/20 text-green-400"
+                  }`}
+                >
+                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
+
+                {/* Skip */}
+                {nextSong && (
+                  <button
+                    onClick={handleSkipToNext}
+                    className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
+                    title={`Skip to: ${nextSong.title}`}
+                  >
+                    <SkipForward size={18} />
+                  </button>
+                )}
+
+                {/* Mark Played */}
+                <button
+                  onClick={handleMarkPlayedAndClose}
+                  className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-all"
+                  title="Mark as Played & Close"
+                >
+                  <Check size={18} />
+                </button>
+
+                {/* Expand */}
+                <button
+                  onClick={() => setIsMinimized(false)}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all"
+                  title="Expand Player"
+                >
+                  <Maximize2 size={18} />
+                </button>
+
+                {/* Close */}
+                <button
+                  onClick={handleCloseModal}
+                  className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
+                  title="Close Player"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Up Next Preview */}
+            {nextSong && (
+              <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
+                <span>Up next:</span>
+                <span className="text-gray-300 truncate">{nextSong.title}</span>
+                <span className="text-gray-600">by</span>
+                <span className="text-gray-400 truncate">{nextSong.artist}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Hidden player container when minimized */}
+          <div className="hidden">
+            <div id="youtube-player" />
+          </div>
+        </div>
+      )}
+
+      {/* Add padding at bottom when minimized player is showing */}
+      <div
+        className={`relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 ${
+          videoModal && isMinimized ? "pb-32" : ""
+        }`}
+      >
         {/* Header */}
         <header className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -737,7 +1035,12 @@ export default function Dashboard() {
                     count: stats.played,
                     color: "green",
                   },
-                  { key: "all", label: "All", count: stats.total, color: "gray" },
+                  {
+                    key: "all",
+                    label: "All",
+                    count: stats.total,
+                    color: "gray",
+                  },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -807,7 +1110,8 @@ export default function Dashboard() {
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
                   const isPlayed = req.status === "played";
-                  const isCurrentlyPlaying = currentPlayingRequest?.id === req.id;
+                  const isCurrentlyPlaying =
+                    currentPlayingRequest?.id === req.id;
 
                   return (
                     <div
@@ -840,7 +1144,7 @@ export default function Dashboard() {
                             </div>
                           )}
                           {/* Play overlay */}
-                          {hasUrl && (
+                          {hasUrl && !isCurrentlyPlaying && (
                             <button
                               onClick={() => handleOpenVideo(req)}
                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
@@ -900,7 +1204,11 @@ export default function Dashboard() {
                                   : "bg-yellow-500/10 text-yellow-400"
                               }`}
                             >
-                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : "Request"}
+                              {isCurrentlyPlaying
+                                ? "Playing"
+                                : isPlayed
+                                ? "Played"
+                                : "Request"}
                             </span>
                           </div>
 
@@ -920,7 +1228,9 @@ export default function Dashboard() {
                                       : "bg-green-500/10 text-green-400 border-green-500/20"
                                   }`}
                                 >
-                                  {req.explicit === "Explicit" ? "Explicit" : "Clean"}
+                                  {req.explicit === "Explicit"
+                                    ? "Explicit"
+                                    : "Clean"}
                                 </span>
                               )}
                             </div>
