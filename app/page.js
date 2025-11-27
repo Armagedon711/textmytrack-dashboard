@@ -11,15 +11,26 @@ import {
   Phone,
   AlertCircle,
   Trash2,
-  ExternalLink,
   Clock,
   User,
-  TrendingUp,
-  Activity,
-  Sparkles,
+  Play,
+  Pause,
+  SkipForward,
+  Volume2,
   VolumeX,
   ChevronDown,
-  Play,
+  ListMusic,
+  Disc3,
+  Zap,
+  Heart,
+  Shield,
+  ExternalLink,
+  RefreshCw,
+  Filter,
+  MoreVertical,
+  CheckCircle2,
+  XCircle,
+  Circle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -28,30 +39,38 @@ const PLATFORMS = {
   youtube: {
     name: "YouTube",
     icon: "🎬",
-    color: "text-red-400",
+    color: "#FF0000",
+    textColor: "text-red-400",
     bgColor: "bg-red-500/10",
-    borderColor: "border-red-500/20",
+    borderColor: "border-red-500/30",
+    hoverBg: "hover:bg-red-500/20",
   },
   spotify: {
     name: "Spotify",
     icon: "🎵",
-    color: "text-green-400",
+    color: "#1DB954",
+    textColor: "text-green-400",
     bgColor: "bg-green-500/10",
-    borderColor: "border-green-500/20",
+    borderColor: "border-green-500/30",
+    hoverBg: "hover:bg-green-500/20",
   },
   apple: {
     name: "Apple Music",
     icon: "🍎",
-    color: "text-pink-400",
+    color: "#FC3C44",
+    textColor: "text-pink-400",
     bgColor: "bg-pink-500/10",
-    borderColor: "border-pink-500/20",
+    borderColor: "border-pink-500/30",
+    hoverBg: "hover:bg-pink-500/20",
   },
   soundcloud: {
     name: "SoundCloud",
     icon: "🔊",
-    color: "text-orange-400",
+    color: "#FF5500",
+    textColor: "text-orange-400",
     bgColor: "bg-orange-500/10",
-    borderColor: "border-orange-500/20",
+    borderColor: "border-orange-500/30",
+    hoverBg: "hover:bg-orange-500/20",
   },
 };
 
@@ -64,11 +83,12 @@ export default function Dashboard() {
   const [djProfile, setDjProfile] = useState(null);
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [videoModal, setVideoModal] = useState(null);
+  const [showPlatformMenu, setShowPlatformMenu] = useState(false);
 
-  // Helper function to get the appropriate URL based on platform
+  // Helper functions
   function getPlatformUrl(request) {
     switch (selectedPlatform) {
       case "youtube":
@@ -84,7 +104,6 @@ export default function Dashboard() {
     }
   }
 
-  // Helper function to check if a platform URL exists for a request
   function hasPlatformUrl(request, platform) {
     switch (platform) {
       case "youtube":
@@ -100,21 +119,16 @@ export default function Dashboard() {
     }
   }
 
-  // Helper function to open video (modal for YouTube, direct link for others)
   function handleOpenVideo(request) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
-      // Open YouTube in modal with embedded player (muted by default)
       setVideoModal(request.youtube_video_id);
     } else {
-      // For other platforms, open in new tab
       const url = getPlatformUrl(request);
-      if (url) {
-        window.open(url, "_blank");
-      }
+      if (url) window.open(url, "_blank");
     }
   }
 
-  // Fetch DJ profile with Twilio number
+  // Data fetching
   async function fetchDjProfile(userId) {
     try {
       let data;
@@ -174,6 +188,7 @@ export default function Dashboard() {
 
   async function updatePlatformPreference(platform) {
     setSelectedPlatform(platform);
+    setShowPlatformMenu(false);
     if (user) {
       await supabase
         .from("dj_profiles")
@@ -209,6 +224,7 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
+  // Actions
   async function updateStatus(id, status) {
     await fetch("/api/requests-status", {
       method: "POST",
@@ -219,7 +235,7 @@ export default function Dashboard() {
   }
 
   async function deleteRequest(id) {
-    if (!confirm("Delete this request?")) return;
+    if (!confirm("Remove this request?")) return;
     const res = await fetch("/api/requests-delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -229,26 +245,6 @@ export default function Dashboard() {
     if (result.success) {
       setRequests((prev) => prev.filter((req) => req.id !== id));
     }
-  }
-
-  async function clearAllRequests() {
-    if (
-      !confirm(
-        "Are you sure you want to delete ALL requests? This cannot be undone."
-      )
-    )
-      return;
-
-    const deletePromises = filteredRequests.map((req) =>
-      fetch("/api/requests-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: req.id }),
-      })
-    );
-
-    await Promise.all(deletePromises);
-    if (user) fetchRequests(user.id);
   }
 
   async function handleLogout() {
@@ -261,9 +257,9 @@ export default function Dashboard() {
     const past = new Date(timestamp);
     const diff = (now - past) / 1000;
     if (diff < 60) return "just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
   }
 
   function formatPhoneNumber(phoneNumber) {
@@ -279,6 +275,7 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
+  // Filtered data
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     return req.status === filterStatus;
@@ -294,21 +291,24 @@ export default function Dashboard() {
   const currentPlatform = PLATFORMS[selectedPlatform];
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] text-white">
-      {/* Gradient Background Orb */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#ff4da3]/20 via-[#b366ff]/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+    <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] text-white">
+      {/* Background Effects */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
+      </div>
 
       {/* Video Modal */}
       {videoModal && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-50 p-4"
           onClick={() => setVideoModal(null)}
         >
           <div
-            className="bg-[#1a1a2a] rounded-2xl overflow-hidden max-w-5xl w-full shadow-2xl border border-white/10"
+            className="bg-[#16161f] rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl border border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="aspect-video">
+            <div className="aspect-video bg-black">
               <iframe
                 width="100%"
                 height="100%"
@@ -316,453 +316,456 @@ export default function Dashboard() {
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
-                className="w-full h-full"
               />
             </div>
-            <div className="p-3 flex items-center justify-between bg-[#141420]">
+            <div className="p-4 flex items-center justify-between border-t border-white/5">
               <div className="flex items-center gap-2 text-sm text-gray-400">
                 <VolumeX size={16} />
-                <span>Video started muted - Click video to unmute</span>
+                <span>Click video to unmute</span>
               </div>
               <button
                 onClick={() => setVideoModal(null)}
-                className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-sm font-semibold"
+                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all text-sm font-medium flex items-center gap-2"
               >
-                <X size={16} className="inline mr-1" /> Close
+                <X size={16} /> Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="relative max-w-7xl mx-auto p-4 sm:p-6">
-        {/* Top Bar - Compacted */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff4da3] to-[#b366ff] flex items-center justify-center shadow-lg shadow-[#ff4da3]/20">
-              <Music size={20} className="text-white" />
+      <div className="relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <Disc3 size={24} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">TextMyTrack</h1>
-              <p className="text-xs text-gray-500">Request Dashboard</p>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                TextMyTrack
+              </h1>
+              <p className="text-sm text-gray-500">DJ Request Dashboard</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs text-gray-500">Logged in as</p>
-              <p className="text-sm font-medium text-gray-300">
-                {user?.email}
-              </p>
-            </div>
+            <button
+              onClick={() => user && fetchRequests(user.id)}
+              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+              title="Refresh"
+            >
+              <RefreshCw size={18} className="text-gray-400" />
+            </button>
             <button
               onClick={handleLogout}
-              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 hover:text-white"
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2"
             >
-              <LogOut size={16} className="inline sm:mr-2" />
+              <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Phone Number Card with Platform Selector - Compacted */}
-        {user && (
-          <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 backdrop-blur-xl shadow-2xl">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4da3ff] to-[#b366ff] flex items-center justify-center shadow-lg shadow-[#4da3ff]/20">
+        {/* Main Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar - Left Column */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* DJ Info Card */}
+            <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                   <Phone size={18} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">
-                    Your Number
+                  <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">
+                    Your Request Line
                   </p>
                   {djProfile ? (
-                    <p className="text-xl font-bold tracking-tight text-white">
+                    <p className="text-lg font-bold text-white">
                       {formatPhoneNumber(djProfile.twilio_number)}
                     </p>
                   ) : profileError ? (
-                    <p className="text-sm text-red-400 flex items-center gap-2">
-                      <AlertCircle size={16} />
-                      {profileError}
-                    </p>
+                    <p className="text-sm text-red-400">{profileError}</p>
                   ) : (
-                    <p className="text-gray-400 text-sm">Loading...</p>
+                    <p className="text-sm text-gray-500">Loading...</p>
                   )}
                 </div>
               </div>
-
-              {/* Platform Selector Dropdown - All 4 Platforms */}
-              <div className="flex items-center gap-3">
-                <div className="px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <p className="text-xs text-green-400 font-medium">● Active</p>
-                </div>
-                <div className="relative">
-                  <select
-                    value={selectedPlatform}
-                    onChange={(e) => updatePlatformPreference(e.target.value)}
-                    className="appearance-none px-3 py-1.5 pr-8 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-medium hover:bg-white/10 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#ff4da3]/50"
-                  >
-                    <option value="youtube" className="bg-[#1a1a2a] text-white">
-                      🎬 YouTube
-                    </option>
-                    <option value="spotify" className="bg-[#1a1a2a] text-white">
-                      🎵 Spotify
-                    </option>
-                    <option value="apple" className="bg-[#1a1a2a] text-white">
-                      🍎 Apple Music
-                    </option>
-                    <option
-                      value="soundcloud"
-                      className="bg-[#1a1a2a] text-white"
-                    >
-                      🔊 SoundCloud
-                    </option>
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Platform indicator */}
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-xs text-gray-500">
-                Songs will open in{" "}
-                <span className={currentPlatform.color}>
-                  {currentPlatform.icon} {currentPlatform.name}
+              <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
+                <span className="text-xs text-green-400 font-medium">
+                  ● Accepting Requests
                 </span>
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Stats Grid - Compacted */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          {[
-            {
-              label: "Total",
-              value: stats.total,
-              icon: Activity,
-              color: "text-white",
-            },
-            {
-              label: "Pending",
-              value: stats.pending,
-              icon: Clock,
-              color: "text-yellow-400",
-            },
-            {
-              label: "Approved",
-              value: stats.approved,
-              icon: Check,
-              color: "text-green-400",
-            },
-            {
-              label: "Played",
-              value: stats.played,
-              icon: TrendingUp,
-              color: "text-blue-400",
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="p-3 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/[0.07] transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <stat.icon size={16} className={`${stat.color} opacity-60`} />
-                <Sparkles
-                  size={12}
-                  className="text-gray-600 group-hover:text-gray-500 transition-colors"
-                />
               </div>
-              <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-              <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
             </div>
-          ))}
-        </div>
 
-        {/* Filter Pills with Clear All Button */}
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div className="flex gap-2 flex-wrap">
-            {["all", "pending", "approved", "played"].map((status) => (
-              <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  filterStatus === status
-                    ? "bg-[#ff4da3] text-white shadow-lg shadow-[#ff4da3]/30"
-                    : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-300 border border-white/10"
-                }`}
-              >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-              </button>
-            ))}
+            {/* Platform Selector */}
+            <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">
+                Open Songs In
+              </p>
+              <div className="space-y-2">
+                {Object.entries(PLATFORMS).map(([key, platform]) => (
+                  <button
+                    key={key}
+                    onClick={() => updatePlatformPreference(key)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                      selectedPlatform === key
+                        ? `${platform.bgColor} ${platform.borderColor} border-2`
+                        : "bg-white/5 border border-transparent hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="text-xl">{platform.icon}</span>
+                    <span
+                      className={`font-medium ${
+                        selectedPlatform === key
+                          ? platform.textColor
+                          : "text-gray-300"
+                      }`}
+                    >
+                      {platform.name}
+                    </span>
+                    {selectedPlatform === key && (
+                      <CheckCircle2
+                        size={16}
+                        className={`ml-auto ${platform.textColor}`}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">
+                Tonight's Stats
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-sm">Total Requests</span>
+                  <span className="text-white font-bold text-lg">
+                    {stats.total}
+                  </span>
+                </div>
+                <div className="h-px bg-white/5" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Circle
+                      size={8}
+                      className="fill-yellow-400 text-yellow-400"
+                    />
+                    <span className="text-gray-400 text-sm">Waiting</span>
+                  </div>
+                  <span className="text-yellow-400 font-semibold">
+                    {stats.pending}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Circle
+                      size={8}
+                      className="fill-green-400 text-green-400"
+                    />
+                    <span className="text-gray-400 text-sm">Approved</span>
+                  </div>
+                  <span className="text-green-400 font-semibold">
+                    {stats.approved}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Circle size={8} className="fill-blue-400 text-blue-400" />
+                    <span className="text-gray-400 text-sm">Played</span>
+                  </div>
+                  <span className="text-blue-400 font-semibold">
+                    {stats.played}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Clear All Button */}
-          {filteredRequests.length > 0 && (
-            <button
-              onClick={clearAllRequests}
-              className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
-            >
-              <Trash2 size={14} className="inline mr-1" />
-              Clear All ({filteredRequests.length})
-            </button>
-          )}
-        </div>
-
-        {/* Request Cards */}
-        {loading ? (
-          <div className="flex items-center justify-center py-32">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-white/10 border-t-[#ff4da3] rounded-full animate-spin" />
-              <div
-                className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-[#b366ff] rounded-full animate-spin"
-                style={{ animationDuration: "1.5s" }}
-              />
-            </div>
-          </div>
-        ) : filteredRequests.length === 0 ? (
-          <div className="text-center py-32">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-white/5 flex items-center justify-center">
-              <Music size={40} className="text-gray-600" />
-            </div>
-            <p className="text-xl text-gray-500 font-medium">
-              {filterStatus === "all"
-                ? "No requests yet"
-                : `No ${filterStatus} requests`}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredRequests.map((req) => {
-              const hasUrl = getPlatformUrl(req);
-              const isYouTube = selectedPlatform === "youtube";
-
-              // Count available platforms for this request
-              const availablePlatforms = Object.keys(PLATFORMS).filter((p) =>
-                hasPlatformUrl(req, p)
-              );
-
-              return (
-                <div
-                  key={req.id}
-                  className="p-5 rounded-2xl bg-gradient-to-br from-white/[0.07] to-white/[0.02] border border-white/10 backdrop-blur-sm hover:border-white/20 transition-all group"
+          {/* Main Content - Right Columns */}
+          <div className="lg:col-span-3">
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+              {[
+                {
+                  key: "pending",
+                  label: "Waiting",
+                  count: stats.pending,
+                  color: "yellow",
+                },
+                {
+                  key: "approved",
+                  label: "Up Next",
+                  count: stats.approved,
+                  color: "green",
+                },
+                {
+                  key: "played",
+                  label: "Played",
+                  count: stats.played,
+                  color: "blue",
+                },
+                { key: "all", label: "All", count: stats.total, color: "gray" },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilterStatus(tab.key)}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                    filterStatus === tab.key
+                      ? tab.color === "yellow"
+                        ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                        : tab.color === "green"
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                        : tab.color === "blue"
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        : "bg-white/10 text-white border border-white/20"
+                      : "bg-white/5 text-gray-400 border border-transparent hover:bg-white/10"
+                  }`}
                 >
-                  <div className="flex gap-5">
-                    {/* Thumbnail */}
-                    <div className="flex-shrink-0">
-                      <div className="w-32 h-32 rounded-xl overflow-hidden border border-white/10 group-hover:border-[#ff4da3]/50 transition-all shadow-lg">
-                        {req.thumbnail ? (
-                          <img
-                            src={req.thumbnail}
-                            alt={req.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
-                            <Music size={32} className="text-gray-600" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  {tab.label}
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-xs ${
+                      filterStatus === tab.key
+                        ? "bg-white/20"
+                        : "bg-white/10"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {/* Header */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          {hasUrl ? (
-                            <button
-                              onClick={() => handleOpenVideo(req)}
-                              className="group/link inline-flex items-center gap-2 text-left hover:opacity-90 transition-opacity"
-                            >
-                              <h2 className="text-xl font-bold text-white group-hover/link:text-[#ff4da3] transition-colors">
-                                {req.title}
-                              </h2>
-                              <div className="flex items-center gap-1">
-                                {isYouTube && (
-                                  <VolumeX
-                                    size={14}
-                                    className="text-gray-600 group-hover/link:text-gray-500"
-                                  />
-                                )}
-                                <Play
-                                  size={16}
-                                  className="text-gray-600 group-hover/link:text-[#ff4da3] transition-colors"
-                                />
-                              </div>
-                            </button>
+            {/* Request List */}
+            {loading ? (
+              <div className="flex items-center justify-center py-32">
+                <div className="relative">
+                  <div className="w-12 h-12 border-3 border-white/10 border-t-pink-500 rounded-full animate-spin" />
+                </div>
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="text-center py-20 px-4">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
+                  <ListMusic size={28} className="text-gray-600" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-400 mb-1">
+                  {filterStatus === "pending"
+                    ? "No requests waiting"
+                    : filterStatus === "approved"
+                    ? "No songs queued up"
+                    : filterStatus === "played"
+                    ? "No songs played yet"
+                    : "No requests yet"}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Requests will appear here when people text your number
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredRequests.map((req, index) => {
+                  const hasUrl = getPlatformUrl(req);
+                  const isYouTube = selectedPlatform === "youtube";
+
+                  return (
+                    <div
+                      key={req.id}
+                      className="group p-4 rounded-2xl bg-[#12121a] border border-white/5 hover:border-white/10 transition-all"
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* Queue Number */}
+                        <div className="hidden sm:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-medium text-gray-500">
+                            {index + 1}
+                          </span>
+                        </div>
+
+                        {/* Thumbnail */}
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                          {req.thumbnail ? (
+                            <img
+                              src={req.thumbnail}
+                              alt={req.title}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
-                            <div>
-                              <h2 className="text-xl font-bold text-white">
-                                {req.title}
-                              </h2>
-                              <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
-                                <AlertCircle size={12} />
-                                {currentPlatform.name} link not available
-                                {availablePlatforms.length > 0 && (
-                                  <span className="text-gray-500 ml-1">
-                                    (Try:{" "}
-                                    {availablePlatforms
-                                      .map((p) => PLATFORMS[p].name)
-                                      .join(", ")}
-                                    )
-                                  </span>
-                                )}
-                              </p>
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Music size={24} className="text-gray-600" />
                             </div>
                           )}
-                          <p className="text-sm text-gray-400 font-medium mt-1">
-                            {req.artist}
-                          </p>
+                          {/* Play overlay */}
+                          {hasUrl && (
+                            <button
+                              onClick={() => handleOpenVideo(req)}
+                              className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            >
+                              <Play
+                                size={24}
+                                className="text-white fill-white"
+                              />
+                            </button>
+                          )}
                         </div>
 
-                        <span
-                          className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                            req.status === "pending"
-                              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                              : req.status === "approved"
-                              ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                              : req.status === "played"
-                              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                              : "bg-red-500/10 text-red-400 border border-red-500/20"
-                          }`}
-                        >
-                          {req.status}
-                        </span>
-                      </div>
+                        {/* Song Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-white truncate">
+                                {req.title}
+                              </h3>
+                              <p className="text-sm text-gray-400 truncate">
+                                {req.artist}
+                              </p>
+                            </div>
 
-                      {/* Metadata */}
-                      <div className="flex flex-wrap gap-3 mb-4">
-                        {[
-                          {
-                            label: req.genre || "Unknown",
-                            color: "text-purple-400",
-                            bg: "bg-purple-500/10",
-                            border: "border-purple-500/20",
-                          },
-                          {
-                            label: req.energy || "Unknown",
-                            color: "text-pink-400",
-                            bg: "bg-pink-500/10",
-                            border: "border-pink-500/20",
-                          },
-                          {
-                            label: req.mood || "Unknown",
-                            color: "text-blue-400",
-                            bg: "bg-blue-500/10",
-                            border: "border-blue-500/20",
-                          },
-                          {
-                            label: req.explicit || "Unknown",
-                            color:
-                              req.explicit === "Explicit"
-                                ? "text-red-400"
-                                : req.explicit === "Clean"
-                                ? "text-green-400"
-                                : "text-yellow-400",
-                            bg:
-                              req.explicit === "Explicit"
-                                ? "bg-red-500/10"
-                                : req.explicit === "Clean"
-                                ? "bg-green-500/10"
-                                : "bg-yellow-500/10",
-                            border:
-                              req.explicit === "Explicit"
-                                ? "border-red-500/20"
-                                : req.explicit === "Clean"
-                                ? "border-green-500/20"
-                                : "border-yellow-500/20",
-                          },
-                        ].map((tag, i) => (
-                          <span
-                            key={i}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold ${tag.color} ${tag.bg} border ${tag.border}`}
-                          >
-                            {tag.label}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Platform availability indicators */}
-                      <div className="flex gap-2 mb-4">
-                        {Object.entries(PLATFORMS).map(([key, platform]) => {
-                          const available = hasPlatformUrl(req, key);
-                          return (
+                            {/* Status Badge */}
                             <span
-                              key={key}
-                              className={`text-xs px-2 py-0.5 rounded ${
-                                available
-                                  ? `${platform.bgColor} ${platform.color} ${platform.borderColor} border`
-                                  : "bg-white/5 text-gray-600 border border-white/5"
+                              className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                req.status === "pending"
+                                  ? "bg-yellow-500/10 text-yellow-400"
+                                  : req.status === "approved"
+                                  ? "bg-green-500/10 text-green-400"
+                                  : req.status === "played"
+                                  ? "bg-blue-500/10 text-blue-400"
+                                  : "bg-red-500/10 text-red-400"
                               }`}
-                              title={
-                                available
-                                  ? `${platform.name} available`
-                                  : `${platform.name} not available`
-                              }
                             >
-                              {platform.icon}
+                              {req.status === "pending"
+                                ? "Waiting"
+                                : req.status === "approved"
+                                ? "Up Next"
+                                : req.status === "played"
+                                ? "Played"
+                                : req.status}
                             </span>
-                          );
-                        })}
-                      </div>
-
-                      {/* Footer */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          <div className="flex items-center gap-1.5">
-                            <User size={12} />
-                            <span>{req.requestedBy}</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={12} />
-                            <span>{timeAgo(req.requestedAt)}</span>
+
+                          {/* Meta Row */}
+                          <div className="flex items-center gap-3 mt-2 flex-wrap">
+                            {/* Tags */}
+                            <div className="flex items-center gap-1.5">
+                              {req.genre && req.genre !== "Unknown" && (
+                                <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                  {req.genre}
+                                </span>
+                              )}
+                              {req.explicit && req.explicit !== "Unknown" && (
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-xs border ${
+                                    req.explicit === "Explicit"
+                                      ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                      : "bg-green-500/10 text-green-400 border-green-500/20"
+                                  }`}
+                                >
+                                  {req.explicit === "Explicit" ? "E" : "Clean"}
+                                </span>
+                              )}
+                            </div>
+
+                            <span className="text-gray-600">•</span>
+
+                            {/* Requester & Time */}
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <User size={12} />
+                              <span className="truncate max-w-[100px]">
+                                {req.requestedBy}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <Clock size={12} />
+                              <span>{timeAgo(req.requestedAt)}</span>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Actions - Conditional rendering based on status */}
-                        <div className="flex gap-2">
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* Preview Button */}
+                          {hasUrl && (
+                            <button
+                              onClick={() => handleOpenVideo(req)}
+                              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
+                              title={`Preview on ${currentPlatform.name}`}
+                            >
+                              <ExternalLink
+                                size={16}
+                                className="text-gray-400"
+                              />
+                            </button>
+                          )}
+
+                          {/* Status Actions */}
                           {req.status === "pending" && (
-                            <button
-                              onClick={() => updateStatus(req.id, "approved")}
-                              className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all text-xs font-semibold"
-                            >
-                              <Check size={14} className="inline mr-1" />{" "}
-                              Approve
-                            </button>
+                            <>
+                              <button
+                                onClick={() => updateStatus(req.id, "approved")}
+                                className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all"
+                                title="Add to Queue"
+                              >
+                                <Check size={16} className="text-green-400" />
+                              </button>
+                              <button
+                                onClick={() => deleteRequest(req.id)}
+                                className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all"
+                                title="Reject"
+                              >
+                                <X size={16} className="text-red-400" />
+                              </button>
+                            </>
                           )}
 
-                          {(req.status === "pending" ||
-                            req.status === "approved") && (
-                            <button
-                              onClick={() => updateStatus(req.id, "played")}
-                              className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all text-xs font-semibold"
-                            >
-                              <ArrowRight size={14} className="inline mr-1" />{" "}
-                              Played
-                            </button>
+                          {req.status === "approved" && (
+                            <>
+                              <button
+                                onClick={() => updateStatus(req.id, "played")}
+                                className="px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center gap-2"
+                                title="Mark as Played"
+                              >
+                                <SkipForward size={16} className="text-blue-400" />
+                                <span className="text-sm font-medium text-blue-400 hidden sm:inline">
+                                  Played
+                                </span>
+                              </button>
+                              <button
+                                onClick={() => deleteRequest(req.id)}
+                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
+                                title="Remove"
+                              >
+                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
+                              </button>
+                            </>
                           )}
 
-                          <button
-                            onClick={() => deleteRequest(req.id)}
-                            className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition-all text-xs font-semibold"
-                          >
-                            <Trash2 size={14} className="inline mr-1" /> Reject
-                          </button>
+                          {req.status === "played" && (
+                            <button
+                              onClick={() => deleteRequest(req.id)}
+                              className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
+                              title="Remove"
+                            >
+                              <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Footer */}
+        <footer className="mt-12 pt-6 border-t border-white/5 text-center">
+          <p className="text-xs text-gray-600">
+            TextMyTrack • Built for DJs who take requests
+          </p>
+        </footer>
       </div>
     </main>
   );
