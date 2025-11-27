@@ -197,24 +197,45 @@ export default function Dashboard() {
 
   // Actions
   async function updateStatus(id, status) {
-    await fetch("/api/requests-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
-    });
-    if (user) fetchRequests(user.id);
+    try {
+      const res = await fetch("/api/requests-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        // Update local state immediately for better UX
+        setRequests((prev) =>
+          prev.map((req) => (req.id === id ? { ...req, status } : req))
+        );
+      } else {
+        console.error("Failed to update status:", result.error);
+        alert("Failed to update status: " + (result.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error updating status:", err);
+      alert("Error updating status. Please try again.");
+    }
   }
 
   async function deleteRequest(id) {
     if (!confirm("Remove this request?")) return;
-    const res = await fetch("/api/requests-delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    const result = await res.json();
-    if (result.success) {
-      setRequests((prev) => prev.filter((req) => req.id !== id));
+    try {
+      const res = await fetch("/api/requests-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setRequests((prev) => prev.filter((req) => req.id !== id));
+      } else {
+        alert("Failed to delete request");
+      }
+    } catch (err) {
+      console.error("Error deleting request:", err);
+      alert("Error deleting request. Please try again.");
     }
   }
 
@@ -258,7 +279,9 @@ export default function Dashboard() {
 
   const stats = {
     total: requests.length,
-    requests: requests.filter((r) => r.status === "pending" || r.status === "approved").length,
+    requests: requests.filter(
+      (r) => r.status === "pending" || r.status === "approved"
+    ).length,
     played: requests.filter((r) => r.status === "played").length,
   };
 
@@ -437,7 +460,10 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-green-400 text-green-400" />
+                    <Circle
+                      size={8}
+                      className="fill-green-400 text-green-400"
+                    />
                     <span className="text-gray-400 text-sm">Played</span>
                   </div>
                   <span className="text-green-400 font-semibold">
@@ -562,18 +588,21 @@ export default function Dashboard() {
                         </div>
 
                         {/* Song Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              {/* Clickable Song Title */}
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-start justify-between gap-3">
+                            {/* Title and Artist - with proper truncation */}
+                            <div className="min-w-0 flex-1 overflow-hidden">
                               {hasUrl ? (
                                 <button
                                   onClick={() => handleOpenVideo(req)}
-                                  className="text-left group/title"
+                                  className="block w-full text-left group/title"
                                 >
-                                  <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors flex items-center gap-2">
+                                  <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">
                                     {req.title}
-                                    <ExternalLink size={14} className="opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
+                                    <ExternalLink
+                                      size={14}
+                                      className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400"
+                                    />
                                   </h3>
                                 </button>
                               ) : (
@@ -655,7 +684,7 @@ export default function Dashboard() {
                           {/* Status Actions */}
                           {!isPlayed ? (
                             <>
-                              {/* Checkmark now marks as PLAYED */}
+                              {/* Checkmark marks as PLAYED */}
                               <button
                                 onClick={() => updateStatus(req.id, "played")}
                                 className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all"
@@ -677,7 +706,10 @@ export default function Dashboard() {
                               className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
                               title="Remove"
                             >
-                              <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
+                              <Trash2
+                                size={16}
+                                className="text-gray-500 hover:text-red-400"
+                              />
                             </button>
                           )}
                         </div>
