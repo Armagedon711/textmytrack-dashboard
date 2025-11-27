@@ -3,33 +3,21 @@
 import { useState, useEffect } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import {
-  ArrowRight,
   Check,
   X,
   Music,
   LogOut,
   Phone,
-  AlertCircle,
   Trash2,
   Clock,
   User,
   Play,
-  Pause,
-  SkipForward,
-  Volume2,
   VolumeX,
-  ChevronDown,
   ListMusic,
   Disc3,
-  Zap,
-  Heart,
-  Shield,
   ExternalLink,
   RefreshCw,
-  Filter,
-  MoreVertical,
   CheckCircle2,
-  XCircle,
   Circle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -86,7 +74,6 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [videoModal, setVideoModal] = useState(null);
-  const [showPlatformMenu, setShowPlatformMenu] = useState(false);
 
   // Helper functions
   function getPlatformUrl(request) {
@@ -101,21 +88,6 @@ export default function Dashboard() {
         return request.soundcloud_url || null;
       default:
         return request.youtube_url || request.url || null;
-    }
-  }
-
-  function hasPlatformUrl(request, platform) {
-    switch (platform) {
-      case "youtube":
-        return !!(request.youtube_url || request.url);
-      case "spotify":
-        return !!request.spotify_url;
-      case "apple":
-        return !!request.apple_url;
-      case "soundcloud":
-        return !!request.soundcloud_url;
-      default:
-        return false;
     }
   }
 
@@ -188,7 +160,6 @@ export default function Dashboard() {
 
   async function updatePlatformPreference(platform) {
     setSelectedPlatform(platform);
-    setShowPlatformMenu(false);
     if (user) {
       await supabase
         .from("dj_profiles")
@@ -275,16 +246,19 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
-  // Filtered data
+  // Filtered data - treat both "pending" and "approved" as "Requests"
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
+    if (filterStatus === "pending") {
+      // "Requests" tab shows both pending and approved (anything not played)
+      return req.status === "pending" || req.status === "approved";
+    }
     return req.status === filterStatus;
   });
 
   const stats = {
     total: requests.length,
-    pending: requests.filter((r) => r.status === "pending").length,
-    approved: requests.filter((r) => r.status === "approved").length,
+    requests: requests.filter((r) => r.status === "pending" || r.status === "approved").length,
     played: requests.filter((r) => r.status === "played").length,
   };
 
@@ -443,7 +417,7 @@ export default function Dashboard() {
               </p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-400 text-sm">Total Requests</span>
+                  <span className="text-gray-400 text-sm">Total</span>
                   <span className="text-white font-bold text-lg">
                     {stats.total}
                   </span>
@@ -455,30 +429,18 @@ export default function Dashboard() {
                       size={8}
                       className="fill-yellow-400 text-yellow-400"
                     />
-                    <span className="text-gray-400 text-sm">Waiting</span>
+                    <span className="text-gray-400 text-sm">Requests</span>
                   </div>
                   <span className="text-yellow-400 font-semibold">
-                    {stats.pending}
+                    {stats.requests}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle
-                      size={8}
-                      className="fill-green-400 text-green-400"
-                    />
-                    <span className="text-gray-400 text-sm">Approved</span>
-                  </div>
-                  <span className="text-green-400 font-semibold">
-                    {stats.approved}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-blue-400 text-blue-400" />
+                    <Circle size={8} className="fill-green-400 text-green-400" />
                     <span className="text-gray-400 text-sm">Played</span>
                   </div>
-                  <span className="text-blue-400 font-semibold">
+                  <span className="text-green-400 font-semibold">
                     {stats.played}
                   </span>
                 </div>
@@ -488,26 +450,20 @@ export default function Dashboard() {
 
           {/* Main Content - Right Columns */}
           <div className="lg:col-span-3">
-            {/* Filter Tabs */}
+            {/* Filter Tabs - Simplified to Requests, Played, All */}
             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
               {[
                 {
                   key: "pending",
-                  label: "Waiting",
-                  count: stats.pending,
+                  label: "Requests",
+                  count: stats.requests,
                   color: "yellow",
-                },
-                {
-                  key: "approved",
-                  label: "Up Next",
-                  count: stats.approved,
-                  color: "green",
                 },
                 {
                   key: "played",
                   label: "Played",
                   count: stats.played,
-                  color: "blue",
+                  color: "green",
                 },
                 { key: "all", label: "All", count: stats.total, color: "gray" },
               ].map((tab) => (
@@ -520,8 +476,6 @@ export default function Dashboard() {
                         ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
                         : tab.color === "green"
                         ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : tab.color === "blue"
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                         : "bg-white/10 text-white border border-white/20"
                       : "bg-white/5 text-gray-400 border border-transparent hover:bg-white/10"
                   }`}
@@ -529,9 +483,7 @@ export default function Dashboard() {
                   {tab.label}
                   <span
                     className={`px-2 py-0.5 rounded-md text-xs ${
-                      filterStatus === tab.key
-                        ? "bg-white/20"
-                        : "bg-white/10"
+                      filterStatus === tab.key ? "bg-white/20" : "bg-white/10"
                     }`}
                   >
                     {tab.count}
@@ -554,9 +506,7 @@ export default function Dashboard() {
                 </div>
                 <h3 className="text-lg font-medium text-gray-400 mb-1">
                   {filterStatus === "pending"
-                    ? "No requests waiting"
-                    : filterStatus === "approved"
-                    ? "No songs queued up"
+                    ? "No requests yet"
                     : filterStatus === "played"
                     ? "No songs played yet"
                     : "No requests yet"}
@@ -569,7 +519,7 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
-                  const isYouTube = selectedPlatform === "youtube";
+                  const isPlayed = req.status === "played";
 
                   return (
                     <div
@@ -615,9 +565,22 @@ export default function Dashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <h3 className="font-semibold text-white truncate">
-                                {req.title}
-                              </h3>
+                              {/* Clickable Song Title */}
+                              {hasUrl ? (
+                                <button
+                                  onClick={() => handleOpenVideo(req)}
+                                  className="text-left group/title"
+                                >
+                                  <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors flex items-center gap-2">
+                                    {req.title}
+                                    <ExternalLink size={14} className="opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
+                                  </h3>
+                                </button>
+                              ) : (
+                                <h3 className="font-semibold text-white truncate">
+                                  {req.title}
+                                </h3>
+                              )}
                               <p className="text-sm text-gray-400 truncate">
                                 {req.artist}
                               </p>
@@ -626,22 +589,12 @@ export default function Dashboard() {
                             {/* Status Badge */}
                             <span
                               className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                req.status === "pending"
-                                  ? "bg-yellow-500/10 text-yellow-400"
-                                  : req.status === "approved"
+                                isPlayed
                                   ? "bg-green-500/10 text-green-400"
-                                  : req.status === "played"
-                                  ? "bg-blue-500/10 text-blue-400"
-                                  : "bg-red-500/10 text-red-400"
+                                  : "bg-yellow-500/10 text-yellow-400"
                               }`}
                             >
-                              {req.status === "pending"
-                                ? "Waiting"
-                                : req.status === "approved"
-                                ? "Up Next"
-                                : req.status === "played"
-                                ? "Played"
-                                : req.status}
+                              {isPlayed ? "Played" : "Request"}
                             </span>
                           </div>
 
@@ -700,12 +653,13 @@ export default function Dashboard() {
                           )}
 
                           {/* Status Actions */}
-                          {req.status === "pending" && (
+                          {!isPlayed ? (
                             <>
+                              {/* Checkmark now marks as PLAYED */}
                               <button
-                                onClick={() => updateStatus(req.id, "approved")}
+                                onClick={() => updateStatus(req.id, "played")}
                                 className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all"
-                                title="Add to Queue"
+                                title="Mark as Played"
                               >
                                 <Check size={16} className="text-green-400" />
                               </button>
@@ -717,31 +671,7 @@ export default function Dashboard() {
                                 <X size={16} className="text-red-400" />
                               </button>
                             </>
-                          )}
-
-                          {req.status === "approved" && (
-                            <>
-                              <button
-                                onClick={() => updateStatus(req.id, "played")}
-                                className="px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center gap-2"
-                                title="Mark as Played"
-                              >
-                                <SkipForward size={16} className="text-blue-400" />
-                                <span className="text-sm font-medium text-blue-400 hidden sm:inline">
-                                  Played
-                                </span>
-                              </button>
-                              <button
-                                onClick={() => deleteRequest(req.id)}
-                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
-                                title="Remove"
-                              >
-                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
-                              </button>
-                            </>
-                          )}
-
-                          {req.status === "played" && (
+                          ) : (
                             <button
                               onClick={() => deleteRequest(req.id)}
                               className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
