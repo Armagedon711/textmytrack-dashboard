@@ -187,7 +187,7 @@ export default function Dashboard() {
         setCurrentPlayingRequest(nextSong);
         setVideoModal(nextSong.youtube_video_id);
         currentVideoId.current = nextSong.youtube_video_id;
-        
+
         // Load new video in existing player
         if (playerRef.current && playerReady.current) {
           try {
@@ -218,7 +218,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Initialize YouTube player - only once when first video is opened
+  // Initialize YouTube player
   useEffect(() => {
     if (!videoModal) {
       // When closing, destroy player
@@ -233,7 +233,7 @@ export default function Dashboard() {
       return;
     }
 
-    // If player exists and is ready, just load the new video
+    // If player exists and is ready, just load the new video if different
     if (playerRef.current && playerReady.current) {
       if (currentVideoId.current !== videoModal) {
         currentVideoId.current = videoModal;
@@ -246,9 +246,9 @@ export default function Dashboard() {
       return;
     }
 
-    // If player doesn't exist, create it
+    // If already initializing this video, skip
     if (currentVideoId.current === videoModal) {
-      return; // Already initializing this video
+      return;
     }
 
     currentVideoId.current = videoModal;
@@ -256,12 +256,10 @@ export default function Dashboard() {
     const initPlayer = () => {
       const playerElement = document.getElementById("youtube-player");
       if (!playerElement) {
-        // Retry after a short delay if element isn't ready
         setTimeout(initPlayer, 100);
         return;
       }
 
-      // Destroy existing player if any
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -287,7 +285,6 @@ export default function Dashboard() {
             }
           },
           onStateChange: (event) => {
-            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2
             if (event.data === 0) {
               handleVideoEnd();
             } else if (event.data === 1) {
@@ -300,7 +297,6 @@ export default function Dashboard() {
       });
     };
 
-    // Wait for YT API
     if (window.YT && window.YT.Player) {
       setTimeout(initPlayer, 50);
     } else {
@@ -347,7 +343,6 @@ export default function Dashboard() {
     }
   }
 
-  // Skip to next song manually
   function handleSkipToNext() {
     const currentPlaying = currentPlayingRequestRef.current;
     if (currentPlaying) {
@@ -359,8 +354,7 @@ export default function Dashboard() {
       setCurrentPlayingRequest(nextSong);
       setVideoModal(nextSong.youtube_video_id);
       currentVideoId.current = nextSong.youtube_video_id;
-      
-      // Load new video in existing player
+
       if (playerRef.current && playerReady.current) {
         try {
           playerRef.current.loadVideoById(nextSong.youtube_video_id);
@@ -372,7 +366,6 @@ export default function Dashboard() {
     }
   }
 
-  // Close modal without marking as played
   function handleCloseModal() {
     setVideoModal(null);
     setCurrentPlayingRequest(null);
@@ -380,7 +373,6 @@ export default function Dashboard() {
     currentVideoId.current = null;
   }
 
-  // Mark as played and close
   function handleMarkPlayedAndClose() {
     const currentPlaying = currentPlayingRequestRef.current;
     if (currentPlaying) {
@@ -489,7 +481,6 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
-  // Wrapper for updateStatus with UI feedback
   async function updateStatus(id, status) {
     const success = await updateStatusDirect(id, status);
     if (!success) {
@@ -579,7 +570,6 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
-  // Filtered data
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
@@ -600,7 +590,6 @@ export default function Dashboard() {
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
-  // Get next song for display
   const nextSong = (() => {
     if (!currentPlayingRequest) return pendingRequests[0] || null;
     const currentIndex = pendingRequests.findIndex(
@@ -614,6 +603,95 @@ export default function Dashboard() {
     return pendingRequests[currentIndex + 1] || null;
   })();
 
+  // Player controls component to avoid duplication
+  const PlayerControls = ({ compact = false }) => (
+    <div className={`flex items-center ${compact ? "gap-2" : "gap-2 sm:gap-4"}`}>
+      <button
+        onClick={togglePlayPause}
+        className={`${compact ? "p-2" : "px-4 py-2"} rounded-lg bg-white/5 hover:bg-white/10 transition-all`}
+      >
+        {isPlaying ? (
+          <Pause size={18} className="text-white" />
+        ) : (
+          <Play size={18} className="text-white fill-white" />
+        )}
+      </button>
+
+      <button
+        onClick={() => setIsMuted(!isMuted)}
+        className={`${compact ? "p-2" : "flex items-center gap-2 px-4 py-2"} rounded-lg transition-all ${
+          isMuted
+            ? "bg-white/5 text-gray-400 hover:bg-white/10"
+            : "bg-green-500/20 text-green-400 border border-green-500/30"
+        }`}
+      >
+        {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        {!compact && (
+          <span className="text-sm font-medium hidden sm:inline">
+            {isMuted ? "Muted" : "Sound On"}
+          </span>
+        )}
+      </button>
+
+      {!compact && (
+        <button
+          onClick={() => setAutoPlay(!autoPlay)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+            autoPlay
+              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+              : "bg-white/5 text-gray-400 hover:bg-white/10"
+          }`}
+        >
+          <SkipForward size={18} />
+          <span className="text-sm font-medium hidden sm:inline">
+            {autoPlay ? "Auto-play" : "Manual"}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+
+  const ActionButtons = ({ compact = false }) => (
+    <div className="flex items-center gap-2">
+      {nextSong && (
+        <button
+          onClick={handleSkipToNext}
+          className={`${compact ? "p-2" : "px-4 py-2 flex items-center gap-2"} rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all`}
+          title={`Skip to: ${nextSong.title}`}
+        >
+          <SkipForward size={compact ? 18 : 16} />
+          {!compact && <span className="text-sm font-medium hidden sm:inline">Skip</span>}
+        </button>
+      )}
+
+      <button
+        onClick={handleMarkPlayedAndClose}
+        className={`${compact ? "p-2" : "px-4 py-2 flex items-center gap-2"} rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all`}
+        title="Mark as Played & Close"
+      >
+        <Check size={compact ? 18 : 16} />
+        {!compact && <span className="text-sm font-medium hidden sm:inline">Played</span>}
+      </button>
+
+      <button
+        onClick={() => setIsMinimized(!isMinimized)}
+        className={`${compact ? "p-2" : "px-4 py-2 flex items-center gap-2"} rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all`}
+        title={isMinimized ? "Expand Player" : "Minimize Player"}
+      >
+        {isMinimized ? <Maximize2 size={18} /> : <Minimize2 size={compact ? 18 : 16} />}
+        {!compact && !isMinimized && <span className="text-sm font-medium hidden sm:inline">Minimize</span>}
+      </button>
+
+      <button
+        onClick={handleCloseModal}
+        className={`${compact ? "p-2" : "px-4 py-2"} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all`}
+        title="Close Player"
+      >
+        <X size={compact ? 18 : 16} />
+      </button>
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] text-white">
       {/* Background Effects */}
@@ -622,24 +700,27 @@ export default function Dashboard() {
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* Persistent Player Container - Always in DOM when video is playing */}
+      {/* Full Screen Modal Backdrop - only when not minimized */}
+      {videoModal && !isMinimized && (
+        <div
+          className="fixed inset-0 bg-black/95 backdrop-blur-md z-40"
+          onClick={() => setIsMinimized(true)}
+        />
+      )}
+
+      {/* Player Container - Single persistent element */}
       {videoModal && (
         <div
           className={`fixed z-50 transition-all duration-300 ease-in-out ${
             isMinimized
               ? "bottom-0 left-0 right-0"
-              : "inset-0 flex items-center justify-center p-4 bg-black/95 backdrop-blur-md"
+              : "inset-0 flex items-center justify-center p-4 pointer-events-none"
           }`}
-          onClick={(e) => {
-            if (!isMinimized && e.target === e.currentTarget) {
-              setIsMinimized(true);
-            }
-          }}
         >
           <div
-            className={`bg-[#16161f] shadow-2xl border border-white/10 transition-all duration-300 ${
+            className={`bg-[#16161f] shadow-2xl border border-white/10 pointer-events-auto transition-all duration-300 ${
               isMinimized
-                ? "rounded-none border-t border-b-0 border-l-0 border-r-0"
+                ? "w-full rounded-t-xl"
                 : "rounded-2xl overflow-hidden max-w-4xl w-full"
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -653,139 +734,48 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
-                          <Play
-                            size={18}
-                            className="text-pink-400 fill-pink-400"
-                          />
+                          <Play size={18} className="text-pink-400 fill-pink-400" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Now Playing
-                          </p>
-                          <h3 className="font-semibold text-white truncate">
-                            {currentPlayingRequest.title}
-                          </h3>
-                          <p className="text-sm text-gray-400 truncate">
-                            {currentPlayingRequest.artist}
-                          </p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">Now Playing</p>
+                          <h3 className="font-semibold text-white truncate">{currentPlayingRequest.title}</h3>
+                          <p className="text-sm text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                         </div>
                       </div>
                       {nextSong && (
                         <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
                           <span>Up next:</span>
-                          <span className="text-gray-300 truncate max-w-[150px]">
-                            {nextSong.title}
-                          </span>
+                          <span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* YouTube Player - Full Size */}
+                {/* YouTube Player */}
                 <div className="aspect-video bg-black">
                   <div id="youtube-player" className="w-full h-full" />
                 </div>
 
                 {/* Full Controls */}
                 <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a] flex-wrap gap-3">
-                  <div className="flex items-center gap-2 sm:gap-4">
-                    <button
-                      onClick={togglePlayPause}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                    >
-                      {isPlaying ? (
-                        <Pause size={18} className="text-white" />
-                      ) : (
-                        <Play size={18} className="text-white fill-white" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setIsMuted(!isMuted)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                        isMuted
-                          ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                          : "bg-green-500/20 text-green-400 border border-green-500/30"
-                      }`}
-                    >
-                      {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                      <span className="text-sm font-medium hidden sm:inline">
-                        {isMuted ? "Muted" : "Sound On"}
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={() => setAutoPlay(!autoPlay)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                        autoPlay
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : "bg-white/5 text-gray-400 hover:bg-white/10"
-                      }`}
-                    >
-                      <SkipForward size={18} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        {autoPlay ? "Auto-play" : "Manual"}
-                      </span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {nextSong && (
-                      <button
-                        onClick={handleSkipToNext}
-                        className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
-                      >
-                        <SkipForward size={16} />
-                        <span className="text-sm font-medium hidden sm:inline">
-                          Skip
-                        </span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={handleMarkPlayedAndClose}
-                      className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
-                    >
-                      <Check size={16} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        Played
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={() => setIsMinimized(true)}
-                      className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
-                    >
-                      <Minimize2 size={16} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        Minimize
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={handleCloseModal}
-                      className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all flex items-center gap-2"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
+                  <PlayerControls />
+                  <ActionButtons />
                 </div>
               </>
             )}
 
             {/* Minimized Player Bar */}
             {isMinimized && currentPlayingRequest && (
-              <div className="bg-[#12121a] border-t border-white/10">
+              <div className="bg-[#12121a]">
                 <div className="max-w-6xl mx-auto px-4 py-3">
                   <div className="flex items-center gap-4">
                     {/* Mini Video Preview */}
-                    <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-black flex-shrink-0">
-                      <div
-                        id="youtube-player"
-                        className="w-full h-full"
-                        style={{ transform: "scale(1)", transformOrigin: "center" }}
-                      />
+                    <div
+                      className="relative w-24 h-14 rounded-lg overflow-hidden bg-black flex-shrink-0 cursor-pointer"
+                      onClick={() => setIsMinimized(false)}
+                    >
+                      <div id="youtube-player" className="w-full h-full" />
                     </div>
 
                     {/* Song Info */}
@@ -799,76 +789,17 @@ export default function Dashboard() {
                     </div>
 
                     {/* Mini Controls */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={togglePlayPause}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                      >
-                        {isPlaying ? (
-                          <Pause size={18} className="text-white" />
-                        ) : (
-                          <Play size={18} className="text-white fill-white" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => setIsMuted(!isMuted)}
-                        className={`p-2 rounded-lg transition-all ${
-                          isMuted
-                            ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                            : "bg-green-500/20 text-green-400"
-                        }`}
-                      >
-                        {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                      </button>
-
-                      {nextSong && (
-                        <button
-                          onClick={handleSkipToNext}
-                          className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
-                          title={`Skip to: ${nextSong.title}`}
-                        >
-                          <SkipForward size={18} />
-                        </button>
-                      )}
-
-                      <button
-                        onClick={handleMarkPlayedAndClose}
-                        className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-all"
-                        title="Mark as Played & Close"
-                      >
-                        <Check size={18} />
-                      </button>
-
-                      <button
-                        onClick={() => setIsMinimized(false)}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all"
-                        title="Expand Player"
-                      >
-                        <Maximize2 size={18} />
-                      </button>
-
-                      <button
-                        onClick={handleCloseModal}
-                        className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
-                        title="Close Player"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
+                    <PlayerControls compact />
+                    <ActionButtons compact />
                   </div>
 
                   {/* Up Next Preview */}
                   {nextSong && (
                     <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
                       <span>Up next:</span>
-                      <span className="text-gray-300 truncate">
-                        {nextSong.title}
-                      </span>
+                      <span className="text-gray-300 truncate">{nextSong.title}</span>
                       <span className="text-gray-600">by</span>
-                      <span className="text-gray-400 truncate">
-                        {nextSong.artist}
-                      </span>
+                      <span className="text-gray-400 truncate">{nextSong.artist}</span>
                     </div>
                   )}
                 </div>
@@ -878,10 +809,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Main Content with padding for minimized player */}
+      {/* Main Content */}
       <div
         className={`relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 ${
-          videoModal && isMinimized ? "pb-32" : ""
+          videoModal && isMinimized ? "pb-36" : ""
         }`}
       >
         {/* Header */}
@@ -993,34 +924,22 @@ export default function Dashboard() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400 text-sm">Total</span>
-                  <span className="text-white font-bold text-lg">
-                    {stats.total}
-                  </span>
+                  <span className="text-white font-bold text-lg">{stats.total}</span>
                 </div>
                 <div className="h-px bg-white/5" />
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle
-                      size={8}
-                      className="fill-yellow-400 text-yellow-400"
-                    />
+                    <Circle size={8} className="fill-yellow-400 text-yellow-400" />
                     <span className="text-gray-400 text-sm">Requests</span>
                   </div>
-                  <span className="text-yellow-400 font-semibold">
-                    {stats.requests}
-                  </span>
+                  <span className="text-yellow-400 font-semibold">{stats.requests}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle
-                      size={8}
-                      className="fill-green-400 text-green-400"
-                    />
+                    <Circle size={8} className="fill-green-400 text-green-400" />
                     <span className="text-gray-400 text-sm">Played</span>
                   </div>
-                  <span className="text-green-400 font-semibold">
-                    {stats.played}
-                  </span>
+                  <span className="text-green-400 font-semibold">{stats.played}</span>
                 </div>
               </div>
             </div>
@@ -1032,24 +951,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 {[
-                  {
-                    key: "pending",
-                    label: "Requests",
-                    count: stats.requests,
-                    color: "yellow",
-                  },
-                  {
-                    key: "played",
-                    label: "Played",
-                    count: stats.played,
-                    color: "green",
-                  },
-                  {
-                    key: "all",
-                    label: "All",
-                    count: stats.total,
-                    color: "gray",
-                  },
+                  { key: "pending", label: "Requests", count: stats.requests, color: "yellow" },
+                  { key: "played", label: "Played", count: stats.played, color: "green" },
+                  { key: "all", label: "All", count: stats.total, color: "gray" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -1065,11 +969,7 @@ export default function Dashboard() {
                     }`}
                   >
                     {tab.label}
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-xs ${
-                        filterStatus === tab.key ? "bg-white/20" : "bg-white/10"
-                      }`}
-                    >
+                    <span className={`px-2 py-0.5 rounded-md text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>
                       {tab.count}
                     </span>
                   </button>
@@ -1083,9 +983,7 @@ export default function Dashboard() {
                 >
                   <Trash2 size={16} />
                   <span className="hidden sm:inline">Clear All</span>
-                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-xs">
-                    {filteredRequests.length}
-                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-xs">{filteredRequests.length}</span>
                 </button>
               )}
             </div>
@@ -1101,23 +999,16 @@ export default function Dashboard() {
                   <ListMusic size={28} className="text-gray-600" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-400 mb-1">
-                  {filterStatus === "pending"
-                    ? "No requests yet"
-                    : filterStatus === "played"
-                    ? "No songs played yet"
-                    : "No requests yet"}
+                  {filterStatus === "pending" ? "No requests yet" : filterStatus === "played" ? "No songs played yet" : "No requests yet"}
                 </h3>
-                <p className="text-sm text-gray-600">
-                  Requests will appear here when people text your number
-                </p>
+                <p className="text-sm text-gray-600">Requests will appear here when people text your number</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
                   const isPlayed = req.status === "played";
-                  const isCurrentlyPlaying =
-                    currentPlayingRequest?.id === req.id;
+                  const isCurrentlyPlaying = currentPlayingRequest?.id === req.id;
 
                   return (
                     <div
@@ -1130,18 +1021,12 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="hidden sm:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-medium text-gray-500">
-                            {index + 1}
-                          </span>
+                          <span className="text-sm font-medium text-gray-500">{index + 1}</span>
                         </div>
 
                         <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
                           {req.thumbnail ? (
-                            <img
-                              src={req.thumbnail}
-                              alt={req.title}
-                              className="w-full h-full object-cover"
-                            />
+                            <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <Music size={24} className="text-gray-600" />
@@ -1152,10 +1037,7 @@ export default function Dashboard() {
                               onClick={() => handleOpenVideo(req)}
                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                             >
-                              <Play
-                                size={24}
-                                className="text-white fill-white"
-                              />
+                              <Play size={24} className="text-white fill-white" />
                             </button>
                           )}
                           {isCurrentlyPlaying && (
@@ -1173,26 +1055,16 @@ export default function Dashboard() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1 overflow-hidden">
                               {hasUrl ? (
-                                <button
-                                  onClick={() => handleOpenVideo(req)}
-                                  className="block w-full text-left group/title"
-                                >
+                                <button onClick={() => handleOpenVideo(req)} className="block w-full text-left group/title">
                                   <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">
                                     {req.title}
-                                    <ExternalLink
-                                      size={14}
-                                      className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400"
-                                    />
+                                    <ExternalLink size={14} className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
                                   </h3>
                                 </button>
                               ) : (
-                                <h3 className="font-semibold text-white truncate">
-                                  {req.title}
-                                </h3>
+                                <h3 className="font-semibold text-white truncate">{req.title}</h3>
                               )}
-                              <p className="text-sm text-gray-400 truncate">
-                                {req.artist}
-                              </p>
+                              <p className="text-sm text-gray-400 truncate">{req.artist}</p>
                             </div>
 
                             <span
@@ -1204,11 +1076,7 @@ export default function Dashboard() {
                                   : "bg-yellow-500/10 text-yellow-400"
                               }`}
                             >
-                              {isCurrentlyPlaying
-                                ? "Playing"
-                                : isPlayed
-                                ? "Played"
-                                : "Request"}
+                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : "Request"}
                             </span>
                           </div>
 
@@ -1227,20 +1095,14 @@ export default function Dashboard() {
                                       : "bg-green-500/10 text-green-400 border-green-500/20"
                                   }`}
                                 >
-                                  {req.explicit === "Explicit"
-                                    ? "Explicit"
-                                    : "Clean"}
+                                  {req.explicit === "Explicit" ? "Explicit" : "Clean"}
                                 </span>
                               )}
                             </div>
-
                             <span className="text-gray-600">•</span>
-
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <User size={12} />
-                              <span className="truncate max-w-[100px]">
-                                {req.requestedBy}
-                              </span>
+                              <span className="truncate max-w-[100px]">{req.requestedBy}</span>
                             </div>
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <Clock size={12} />
@@ -1256,10 +1118,7 @@ export default function Dashboard() {
                               className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
                               title={`Preview on ${currentPlatform.name}`}
                             >
-                              <ExternalLink
-                                size={16}
-                                className="text-gray-400"
-                              />
+                              <ExternalLink size={16} className="text-gray-400" />
                             </button>
                           )}
 
@@ -1286,10 +1145,7 @@ export default function Dashboard() {
                               className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
                               title="Remove"
                             >
-                              <Trash2
-                                size={16}
-                                className="text-gray-500 hover:text-red-400"
-                              />
+                              <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
                             </button>
                           )}
                         </div>
@@ -1303,9 +1159,7 @@ export default function Dashboard() {
         </div>
 
         <footer className="mt-12 pt-6 border-t border-white/5 text-center">
-          <p className="text-xs text-gray-600">
-            TextMyTrack • Built for DJs who take requests
-          </p>
+          <p className="text-xs text-gray-600">TextMyTrack • Built for DJs who take requests</p>
         </footer>
       </div>
     </main>
