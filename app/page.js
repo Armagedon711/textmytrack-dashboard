@@ -920,7 +920,7 @@ export default function Dashboard() {
                                       : "bg-green-500/10 text-green-400 border-green-500/20"
                                   }`}
                                 >
-                                  {req.explicit === "Explicit" ? "E" : "Clean"}
+                                  {req.explicit === "Explicit" ? "Explicit" : "Clean"}
                                 </span>
                               )}
                             </div>
