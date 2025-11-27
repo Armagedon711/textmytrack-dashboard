@@ -285,18 +285,6 @@ export default function Dashboard() {
     };
 
     checkAndInit();
-
-    return () => {
-      // Only cleanup if closing modal entirely
-      if (!videoModal) {
-        if (playerRef.current) {
-          try {
-            playerRef.current.destroy();
-          } catch (e) {}
-          playerRef.current = null;
-        }
-      }
-    };
   }, [videoModal, handleVideoEnd]);
 
   // Update mute state on player
@@ -466,7 +454,6 @@ export default function Dashboard() {
         "postgres_changes",
         { event: "*", schema: "public", table: "requests" },
         () => {
-          // Fetch requests without affecting the player
           fetchRequests(user.id);
         }
       )
@@ -474,7 +461,6 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
-  // Wrapper for updateStatus with UI feedback
   async function updateStatus(id, status) {
     const success = await updateStatusDirect(id, status);
     if (!success) {
@@ -564,7 +550,6 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
-  // Filtered data
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
@@ -585,14 +570,15 @@ export default function Dashboard() {
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
-  // Get next song for display
   const nextSong = (() => {
     if (!currentPlayingRequest) return pendingRequests[0] || null;
     const currentIndex = pendingRequests.findIndex(
       (r) => r.id === currentPlayingRequest.id
     );
     if (currentIndex === -1 || currentIndex >= pendingRequests.length - 1) {
-      return pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
+      return (
+        pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null
+      );
     }
     return pendingRequests[currentIndex + 1] || null;
   })();
@@ -605,271 +591,318 @@ export default function Dashboard() {
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* Full Video Modal */}
-      {videoModal && !isMinimized && (
-        <div
-          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          onClick={() => setIsMinimized(true)}
-        >
+      {/* 
+        PERSISTENT PLAYER SYSTEM
+        The player container is ALWAYS in the same place in the DOM.
+        We only change its visual presentation via CSS classes.
+        This prevents the iframe from being destroyed when toggling modes.
+      */}
+      {videoModal && (
+        <>
+          {/* Backdrop - only visible when NOT minimized */}
           <div
-            className="bg-[#16161f] rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl border border-white/10"
-            onClick={(e) => e.stopPropagation()}
+            className={`fixed inset-0 bg-black/95 backdrop-blur-md z-40 transition-opacity duration-200 ${
+              isMinimized
+                ? "opacity-0 pointer-events-none"
+                : "opacity-100 pointer-events-auto"
+            }`}
+            onClick={() => setIsMinimized(true)}
+          />
+
+          {/* 
+            SINGLE PERSISTENT PLAYER WRAPPER
+            This wrapper changes position/size but the player inside never remounts
+          */}
+          <div
+            className={`fixed z-50 transition-all duration-300 ease-out ${
+              isMinimized
+                ? "bottom-0 left-0 right-0 top-auto p-0"
+                : "inset-0 p-4 flex items-center justify-center"
+            }`}
           >
-            {/* Now Playing Header */}
-            {currentPlayingRequest && (
-              <div className="p-4 border-b border-white/5 bg-[#12121a]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
-                      <Play size={18} className="text-pink-400 fill-pink-400" />
+            <div
+              className={`bg-[#16161f] shadow-2xl border border-white/10 overflow-hidden transition-all duration-300 ${
+                isMinimized
+                  ? "w-full max-w-none rounded-t-xl rounded-b-none"
+                  : "w-full max-w-4xl rounded-2xl"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Now Playing Header - only in full mode */}
+              {!isMinimized && currentPlayingRequest && (
+                <div className="p-4 border-b border-white/5 bg-[#12121a]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
+                        <Play
+                          size={18}
+                          className="text-pink-400 fill-pink-400"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider">
+                          Now Playing
+                        </p>
+                        <h3 className="font-semibold text-white truncate">
+                          {currentPlayingRequest.title}
+                        </h3>
+                        <p className="text-sm text-gray-400 truncate">
+                          {currentPlayingRequest.artist}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 uppercase tracking-wider">
-                        Now Playing
-                      </p>
-                      <h3 className="font-semibold text-white truncate">
-                        {currentPlayingRequest.title}
-                      </h3>
-                      <p className="text-sm text-gray-400 truncate">
-                        {currentPlayingRequest.artist}
-                      </p>
-                    </div>
+                    {nextSong && (
+                      <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
+                        <span>Up next:</span>
+                        <span className="text-gray-300 truncate max-w-[150px]">
+                          {nextSong.title}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  {nextSong && (
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
-                      <span>Up next:</span>
-                      <span className="text-gray-300 truncate max-w-[150px]">
-                        {nextSong.title}
+                </div>
+              )}
+
+              {/* 
+                THE ACTUAL YOUTUBE PLAYER
+                This div NEVER gets removed from DOM - only resized via CSS
+              */}
+              <div
+                className={`bg-black transition-all duration-300 ${
+                  isMinimized ? "h-0 overflow-hidden" : "aspect-video"
+                }`}
+              >
+                <div id="youtube-player" className="w-full h-full" />
+              </div>
+
+              {/* Full Controls - only in full mode */}
+              {!isMinimized && (
+                <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a] flex-wrap gap-3">
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <button
+                      onClick={togglePlayPause}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+                    >
+                      {isPlaying ? (
+                        <Pause size={18} className="text-white" />
+                      ) : (
+                        <Play size={18} className="text-white fill-white" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setIsMuted(!isMuted)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                        isMuted
+                          ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                          : "bg-green-500/20 text-green-400 border border-green-500/30"
+                      }`}
+                    >
+                      {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                      <span className="text-sm font-medium hidden sm:inline">
+                        {isMuted ? "Muted" : "Sound On"}
                       </span>
+                    </button>
+
+                    <button
+                      onClick={() => setAutoPlay(!autoPlay)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                        autoPlay
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10"
+                      }`}
+                    >
+                      <SkipForward size={18} />
+                      <span className="text-sm font-medium hidden sm:inline">
+                        {autoPlay ? "Auto-play" : "Manual"}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {nextSong && (
+                      <button
+                        onClick={handleSkipToNext}
+                        className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
+                      >
+                        <SkipForward size={16} />
+                        <span className="text-sm font-medium hidden sm:inline">
+                          Skip
+                        </span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={handleMarkPlayedAndClose}
+                      className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
+                    >
+                      <Check size={16} />
+                      <span className="text-sm font-medium hidden sm:inline">
+                        Played
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setIsMinimized(true)}
+                      className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
+                    >
+                      <Minimize2 size={16} />
+                      <span className="text-sm font-medium hidden sm:inline">
+                        Minimize
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={handleCloseModal}
+                      className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all flex items-center gap-2"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Minimized Bar - only in minimized mode */}
+              {isMinimized && currentPlayingRequest && (
+                <div className="bg-[#12121a] border-t border-white/10">
+                  <div className="max-w-6xl mx-auto px-4 py-3">
+                    <div className="flex items-center gap-4">
+                      {/* Thumbnail with playing indicator */}
+                      <div
+                        className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer"
+                        onClick={() => setIsMinimized(false)}
+                      >
+                        {currentPlayingRequest.thumbnail ? (
+                          <img
+                            src={currentPlayingRequest.thumbnail}
+                            alt={currentPlayingRequest.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Music size={20} className="text-gray-600" />
+                          </div>
+                        )}
+                        {/* Playing indicator overlay */}
+                        <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
+                          <div className="flex gap-0.5">
+                            <div
+                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
+                              style={{ animationDelay: "0ms" }}
+                            />
+                            <div
+                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
+                              style={{ animationDelay: "150ms" }}
+                            />
+                            <div
+                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
+                              style={{ animationDelay: "300ms" }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Song Info */}
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => setIsMinimized(false)}
+                      >
+                        <h4 className="font-semibold text-white text-sm truncate">
+                          {currentPlayingRequest.title}
+                        </h4>
+                        <p className="text-xs text-gray-400 truncate">
+                          {currentPlayingRequest.artist}
+                        </p>
+                      </div>
+
+                      {/* Mini Controls */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={togglePlayPause}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+                          title={isPlaying ? "Pause" : "Play"}
+                        >
+                          {isPlaying ? (
+                            <Pause size={18} className="text-white" />
+                          ) : (
+                            <Play size={18} className="text-white fill-white" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => setIsMuted(!isMuted)}
+                          className={`p-2 rounded-lg transition-all ${
+                            isMuted
+                              ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                              : "bg-green-500/20 text-green-400"
+                          }`}
+                          title={isMuted ? "Unmute" : "Mute"}
+                        >
+                          {isMuted ? (
+                            <VolumeX size={18} />
+                          ) : (
+                            <Volume2 size={18} />
+                          )}
+                        </button>
+
+                        {nextSong && (
+                          <button
+                            onClick={handleSkipToNext}
+                            className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
+                            title={`Skip to: ${nextSong.title}`}
+                          >
+                            <SkipForward size={18} />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={handleMarkPlayedAndClose}
+                          className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-all"
+                          title="Mark as Played & Close"
+                        >
+                          <Check size={18} />
+                        </button>
+
+                        <button
+                          onClick={() => setIsMinimized(false)}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all"
+                          title="Expand Player"
+                        >
+                          <Maximize2 size={18} />
+                        </button>
+
+                        <button
+                          onClick={handleCloseModal}
+                          className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
+                          title="Close Player"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {/* YouTube Player */}
-            <div className="aspect-video bg-black">
-              <div id="youtube-player" className="w-full h-full" />
-            </div>
-
-            {/* Controls */}
-            <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a] flex-wrap gap-3">
-              <div className="flex items-center gap-2 sm:gap-4">
-                {/* Play/Pause */}
-                <button
-                  onClick={togglePlayPause}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                >
-                  {isPlaying ? (
-                    <Pause size={18} className="text-white" />
-                  ) : (
-                    <Play size={18} className="text-white fill-white" />
-                  )}
-                </button>
-
-                {/* Mute Toggle */}
-                <button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                    isMuted
-                      ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                      : "bg-green-500/20 text-green-400 border border-green-500/30"
-                  }`}
-                >
-                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                  <span className="text-sm font-medium hidden sm:inline">
-                    {isMuted ? "Muted" : "Sound On"}
-                  </span>
-                </button>
-
-                {/* Auto-play Toggle */}
-                <button
-                  onClick={() => setAutoPlay(!autoPlay)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                    autoPlay
-                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                      : "bg-white/5 text-gray-400 hover:bg-white/10"
-                  }`}
-                >
-                  <SkipForward size={18} />
-                  <span className="text-sm font-medium hidden sm:inline">
-                    {autoPlay ? "Auto-play" : "Manual"}
-                  </span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Skip to Next */}
-                {nextSong && (
-                  <button
-                    onClick={handleSkipToNext}
-                    className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
-                  >
-                    <SkipForward size={16} />
-                    <span className="text-sm font-medium hidden sm:inline">
-                      Skip
-                    </span>
-                  </button>
-                )}
-
-                {/* Mark as Played & Close */}
-                <button
-                  onClick={handleMarkPlayedAndClose}
-                  className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
-                >
-                  <Check size={16} />
-                  <span className="text-sm font-medium hidden sm:inline">
-                    Played
-                  </span>
-                </button>
-
-                {/* Minimize */}
-                <button
-                  onClick={() => setIsMinimized(true)}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
-                >
-                  <Minimize2 size={16} />
-                  <span className="text-sm font-medium hidden sm:inline">
-                    Minimize
-                  </span>
-                </button>
-
-                {/* Close */}
-                <button
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all flex items-center gap-2"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Minimized Player Bar */}
-      {videoModal && isMinimized && currentPlayingRequest && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#12121a] border-t border-white/10 shadow-2xl">
-          <div className="max-w-6xl mx-auto px-4 py-3">
-            <div className="flex items-center gap-4">
-              {/* Thumbnail */}
-              <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
-                {currentPlayingRequest.thumbnail ? (
-                  <img
-                    src={currentPlayingRequest.thumbnail}
-                    alt={currentPlayingRequest.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Music size={20} className="text-gray-600" />
-                  </div>
-                )}
-                {/* Playing indicator */}
-                <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
-                  <div className="flex gap-0.5">
-                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse" />
-                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse delay-75" />
-                    <div className="w-0.5 h-3 bg-white rounded-full animate-pulse delay-150" />
+                    {/* Up Next Preview */}
+                    {nextSong && (
+                      <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
+                        <span>Up next:</span>
+                        <span className="text-gray-300 truncate">
+                          {nextSong.title}
+                        </span>
+                        <span className="text-gray-600">by</span>
+                        <span className="text-gray-400 truncate">
+                          {nextSong.artist}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-
-              {/* Song Info */}
-              <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-white text-sm truncate">
-                  {currentPlayingRequest.title}
-                </h4>
-                <p className="text-xs text-gray-400 truncate">
-                  {currentPlayingRequest.artist}
-                </p>
-              </div>
-
-              {/* Mini Controls */}
-              <div className="flex items-center gap-2">
-                {/* Play/Pause */}
-                <button
-                  onClick={togglePlayPause}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                >
-                  {isPlaying ? (
-                    <Pause size={18} className="text-white" />
-                  ) : (
-                    <Play size={18} className="text-white fill-white" />
-                  )}
-                </button>
-
-                {/* Mute Toggle */}
-                <button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className={`p-2 rounded-lg transition-all ${
-                    isMuted
-                      ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                      : "bg-green-500/20 text-green-400"
-                  }`}
-                >
-                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                </button>
-
-                {/* Skip */}
-                {nextSong && (
-                  <button
-                    onClick={handleSkipToNext}
-                    className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
-                    title={`Skip to: ${nextSong.title}`}
-                  >
-                    <SkipForward size={18} />
-                  </button>
-                )}
-
-                {/* Mark Played */}
-                <button
-                  onClick={handleMarkPlayedAndClose}
-                  className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-all"
-                  title="Mark as Played & Close"
-                >
-                  <Check size={18} />
-                </button>
-
-                {/* Expand */}
-                <button
-                  onClick={() => setIsMinimized(false)}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all"
-                  title="Expand Player"
-                >
-                  <Maximize2 size={18} />
-                </button>
-
-                {/* Close */}
-                <button
-                  onClick={handleCloseModal}
-                  className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
-                  title="Close Player"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+              )}
             </div>
-
-            {/* Up Next Preview */}
-            {nextSong && (
-              <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
-                <span>Up next:</span>
-                <span className="text-gray-300 truncate">{nextSong.title}</span>
-                <span className="text-gray-600">by</span>
-                <span className="text-gray-400 truncate">{nextSong.artist}</span>
-              </div>
-            )}
           </div>
-
-          {/* Hidden player container when minimized */}
-          <div className="hidden">
-            <div id="youtube-player" />
-          </div>
-        </div>
+        </>
       )}
 
-      {/* Add padding at bottom when minimized player is showing */}
+      {/* Main Content */}
       <div
         className={`relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 ${
           videoModal && isMinimized ? "pb-32" : ""
@@ -909,7 +942,7 @@ export default function Dashboard() {
 
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar - Left Column */}
+          {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             {/* DJ Info Card */}
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
@@ -1017,9 +1050,9 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Main Content - Right Columns */}
+          {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Filter Tabs with Delete All */}
+            {/* Filter Tabs */}
             <div className="flex items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 {[
@@ -1067,7 +1100,6 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              {/* Delete All Button */}
               {filteredRequests.length > 0 && (
                 <button
                   onClick={deleteAllFiltered}
@@ -1085,9 +1117,7 @@ export default function Dashboard() {
             {/* Request List */}
             {loading ? (
               <div className="flex items-center justify-center py-32">
-                <div className="relative">
-                  <div className="w-12 h-12 border-3 border-white/10 border-t-pink-500 rounded-full animate-spin" />
-                </div>
+                <div className="w-12 h-12 border-3 border-white/10 border-t-pink-500 rounded-full animate-spin" />
               </div>
             ) : filteredRequests.length === 0 ? (
               <div className="text-center py-20 px-4">
@@ -1123,14 +1153,12 @@ export default function Dashboard() {
                       }`}
                     >
                       <div className="flex items-center gap-4">
-                        {/* Queue Number */}
                         <div className="hidden sm:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0">
                           <span className="text-sm font-medium text-gray-500">
                             {index + 1}
                           </span>
                         </div>
 
-                        {/* Thumbnail */}
                         <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
                           {req.thumbnail ? (
                             <img
@@ -1143,7 +1171,6 @@ export default function Dashboard() {
                               <Music size={24} className="text-gray-600" />
                             </div>
                           )}
-                          {/* Play overlay */}
                           {hasUrl && !isCurrentlyPlaying && (
                             <button
                               onClick={() => handleOpenVideo(req)}
@@ -1155,19 +1182,29 @@ export default function Dashboard() {
                               />
                             </button>
                           )}
-                          {/* Currently playing indicator */}
                           {isCurrentlyPlaying && (
-                            <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
+                            <button
+                              onClick={() => setIsMinimized(false)}
+                              className="absolute inset-0 bg-pink-500/30 flex items-center justify-center"
+                            >
                               <div className="flex gap-0.5">
-                                <div className="w-1 h-4 bg-white rounded-full animate-pulse" />
-                                <div className="w-1 h-4 bg-white rounded-full animate-pulse delay-75" />
-                                <div className="w-1 h-4 bg-white rounded-full animate-pulse delay-150" />
+                                <div
+                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <div
+                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <div
+                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
+                                  style={{ animationDelay: "300ms" }}
+                                />
                               </div>
-                            </div>
+                            </button>
                           )}
                         </div>
 
-                        {/* Song Info */}
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1 overflow-hidden">
@@ -1194,7 +1231,6 @@ export default function Dashboard() {
                               </p>
                             </div>
 
-                            {/* Status Badge */}
                             <span
                               className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
                                 isCurrentlyPlaying
@@ -1212,7 +1248,6 @@ export default function Dashboard() {
                             </span>
                           </div>
 
-                          {/* Meta Row */}
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
                             <div className="flex items-center gap-1.5">
                               {req.genre && req.genre !== "Unknown" && (
@@ -1234,9 +1269,7 @@ export default function Dashboard() {
                                 </span>
                               )}
                             </div>
-
                             <span className="text-gray-600">•</span>
-
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <User size={12} />
                               <span className="truncate max-w-[100px]">
@@ -1250,7 +1283,6 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {hasUrl && (
                             <button
@@ -1304,7 +1336,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Footer */}
         <footer className="mt-12 pt-6 border-t border-white/5 text-center">
           <p className="text-xs text-gray-600">
             TextMyTrack • Built for DJs who take requests
