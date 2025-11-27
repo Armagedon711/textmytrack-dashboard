@@ -214,6 +214,7 @@ export default function Dashboard() {
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
+
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -223,7 +224,7 @@ export default function Dashboard() {
       return;
     }
 
-    // Don't reinitialize if same video
+    // Do not reinitialize if same video
     if (currentVideoId.current === videoModal && playerRef.current) {
       return;
     }
@@ -231,7 +232,7 @@ export default function Dashboard() {
     currentVideoId.current = videoModal;
 
     const initPlayer = () => {
-      // Destroy existing player if any
+      // Destroy existing player
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -246,7 +247,7 @@ export default function Dashboard() {
         videoId: videoModal,
         playerVars: {
           autoplay: 1,
-          mute: isMutedRef.current ? 1 : 0,
+          mute: 1,               // 🔥 Required for autoplay to work
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
@@ -255,37 +256,42 @@ export default function Dashboard() {
           onReady: (event) => {
             playerReady.current = true;
 
-            // Always autoplay muted (browser requirement)
-            event.target.mute();
+            // 🚀 Begin autoplay muted (browser-safe)
             event.target.playVideo();
-
             setIsPlaying(true);
 
-            // After autoplay succeeds, THEN unmute if needed
+            // 🔊 Unmute AFTER playback starts if user wants sound
             if (!isMutedRef.current) {
               setTimeout(() => {
                 try {
                   event.target.unMute();
-                } catch {}
+                } catch (e) {}
               }, 300);
+            }
+          },
+
+          onStateChange: (event) => {
+            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2
+            if (event.data === window.YT.PlayerState.ENDED) {
+              handleVideoEnd();
+            } else if (event.data === window.YT.PlayerState.PLAYING) {
+              setIsPlaying(true);
+            } else if (event.data === window.YT.PlayerState.PAUSED) {
+              setIsPlaying(false);
             }
           },
         },
       });
     };
 
-    // Wait for YT API and DOM element
-    const checkAndInit = () => {
-      if (window.YT && window.YT.Player) {
+    // Wait for API, then init
+    if (window.YT && window.YT.Player) {
+      setTimeout(initPlayer, 100);
+    } else {
+      window.onYouTubeIframeAPIReady = () => {
         setTimeout(initPlayer, 100);
-      } else {
-        window.onYouTubeIframeAPIReady = () => {
-          setTimeout(initPlayer, 100);
-        };
-      }
-    };
-
-    checkAndInit();
+      };
+    }
   }, [videoModal, handleVideoEnd]);
 
   // Update mute state on player
