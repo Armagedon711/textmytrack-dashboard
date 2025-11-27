@@ -209,69 +209,71 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Initialize/update YouTube player - only when videoModal changes to a NEW video
+  // ========================
+  // FIXED YOUTUBE AUTOPLAY HOOK
+  // ========================
   useEffect(() => {
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
 
       if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch (e) {}
+        try { playerRef.current.destroy(); } catch (e) {}
         playerRef.current = null;
       }
       return;
     }
 
-    // Do not reinitialize if same video
-    if (currentVideoId.current === videoModal && playerRef.current) {
-      return;
-    }
-
+    // Prevent re-init if same video already playing
+    if (currentVideoId.current === videoModal && playerRef.current) return;
     currentVideoId.current = videoModal;
 
     const initPlayer = () => {
-      // Destroy existing player
+      // Clean old player
       if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch (e) {}
+        try { playerRef.current.destroy(); } catch (e) {}
         playerRef.current = null;
       }
 
-      const playerElement = document.getElementById("youtube-player");
-      if (!playerElement) return;
+      // Force iframe attributes BEFORE JS API loads
+      const el = document.getElementById("youtube-player");
+      if (el) {
+        el.setAttribute("allow", "autoplay");
+        el.setAttribute("playsinline", "1");
+        el.setAttribute("allowfullscreen", "1");
+      }
 
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
         playerVars: {
-          autoplay: 1,
-          mute: 1,               // 🔥 Required for autoplay to work
+          autoplay: 1,          // 🔥 Force autoplay
+          mute: 1,              // 🔥 MUST be muted to autoplay everywhere
+          playsinline: 1,
           rel: 0,
           modestbranding: 1,
-          playsinline: 1,
         },
         events: {
           onReady: (event) => {
             playerReady.current = true;
 
-            // 🚀 Begin autoplay muted (browser-safe)
+            // 🚀 Force autoplay twice (some browsers ignore first call)
+            event.target.mute();
             event.target.playVideo();
+            setTimeout(() => {
+              try { event.target.playVideo(); } catch (e) {}
+            }, 150);
+
             setIsPlaying(true);
 
-            // 🔊 Unmute AFTER playback starts if user wants sound
+            // 🔊 Auto-unmute after playback begins if user wants sound
             if (!isMutedRef.current) {
               setTimeout(() => {
-                try {
-                  event.target.unMute();
-                } catch (e) {}
-              }, 300);
+                try { event.target.unMute(); } catch (e) {}
+              }, 400);
             }
           },
 
           onStateChange: (event) => {
-            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2
             if (event.data === window.YT.PlayerState.ENDED) {
               handleVideoEnd();
             } else if (event.data === window.YT.PlayerState.PLAYING) {
@@ -284,7 +286,7 @@ export default function Dashboard() {
       });
     };
 
-    // Wait for API, then init
+    // Wait for API then init
     if (window.YT && window.YT.Player) {
       setTimeout(initPlayer, 100);
     } else {
@@ -293,6 +295,7 @@ export default function Dashboard() {
       };
     }
   }, [videoModal, handleVideoEnd]);
+
 
   // Update mute state on player
   useEffect(() => {
