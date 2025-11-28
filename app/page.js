@@ -28,6 +28,8 @@ import {
   Ban,
   History,
   Layers,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -76,6 +78,7 @@ const TABS = [
   {
     key: "pending",
     label: "Requests",
+    shortLabel: "Requests",
     icon: Clock,
     color: "yellow",
     activeClass: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -84,6 +87,7 @@ const TABS = [
   {
     key: "approved",
     label: "Approved",
+    shortLabel: "Approved",
     icon: ThumbsUp,
     color: "blue",
     activeClass: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -92,6 +96,7 @@ const TABS = [
   {
     key: "rejected",
     label: "Rejected",
+    shortLabel: "Rejected",
     icon: Ban,
     color: "red",
     activeClass: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -100,6 +105,7 @@ const TABS = [
   {
     key: "played",
     label: "Played",
+    shortLabel: "Played",
     icon: History,
     color: "green",
     activeClass: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -108,6 +114,7 @@ const TABS = [
   {
     key: "all",
     label: "All",
+    shortLabel: "All",
     icon: Layers,
     color: "gray",
     activeClass: "bg-white/10 text-white border-white/20",
@@ -124,7 +131,7 @@ export default function Dashboard() {
   const [djProfile, setDjProfile] = useState(null);
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("pending"); // Current viewing tab
+  const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
 
   // Video modal state
@@ -134,9 +141,12 @@ export default function Dashboard() {
   const [autoPlay, setAutoPlay] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
-  
-  // NEW: Track which tab's queue is currently playing (separate from viewing tab)
   const [playbackTab, setPlaybackTab] = useState(null);
+
+  // Tab scroll state
+  const tabContainerRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   // Refs for stable references
   const playerRef = useRef(null);
@@ -147,6 +157,7 @@ export default function Dashboard() {
   const autoPlayRef = useRef(autoPlay);
   const isMutedRef = useRef(isMuted);
   const playbackTabRef = useRef(playbackTab);
+  const progressCheckInterval = useRef(null);
 
   // Keep refs in sync
   useEffect(() => {
@@ -169,6 +180,35 @@ export default function Dashboard() {
     playbackTabRef.current = playbackTab;
   }, [playbackTab]);
 
+  // Check tab scroll buttons visibility
+  const checkScrollButtons = useCallback(() => {
+    const container = tabContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    checkScrollButtons();
+    window.addEventListener("resize", checkScrollButtons);
+    return () => window.removeEventListener("resize", checkScrollButtons);
+  }, [checkScrollButtons]);
+
+  const scrollTabs = (direction) => {
+    const container = tabContainerRef.current;
+    if (container) {
+      const scrollAmount = 150;
+      container.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+      setTimeout(checkScrollButtons, 300);
+    }
+  };
+
   // Helper functions
   function getPlatformUrl(request) {
     switch (selectedPlatform) {
@@ -185,7 +225,6 @@ export default function Dashboard() {
     }
   }
 
-  // Get filtered requests for a specific tab
   const getRequestsForTab = useCallback((tab, allRequests) => {
     if (tab === "all") return allRequests;
     if (tab === "pending") {
@@ -194,7 +233,6 @@ export default function Dashboard() {
     return allRequests.filter((r) => r.status === tab);
   }, []);
 
-  // Get next song using ref to avoid dependency issues - now uses playback tab
   const getNextSongFromRef = useCallback(() => {
     const currentRequests = requestsRef.current;
     const currentPlaying = currentPlayingRequestRef.current;
@@ -202,10 +240,7 @@ export default function Dashboard() {
 
     if (!currentPlaybackTab) return null;
 
-    // Get songs from the current playback tab's queue
     const tabRequests = getRequestsForTab(currentPlaybackTab, currentRequests);
-    
-    // Filter to only songs with YouTube video IDs
     const playableRequests = tabRequests.filter((r) => r.youtube_video_id);
 
     if (!currentPlaying) return playableRequests[0] || null;
@@ -215,14 +250,12 @@ export default function Dashboard() {
     );
 
     if (currentIndex === -1 || currentIndex >= playableRequests.length - 1) {
-      // If current song not in this tab or at end, wrap to start (excluding current)
       return playableRequests.find((r) => r.id !== currentPlaying.id) || null;
     }
 
     return playableRequests[currentIndex + 1] || null;
   }, [getRequestsForTab]);
 
-  // Update status function (stable reference)
   const updateStatusDirect = useCallback(async (id, status) => {
     try {
       const res = await fetch("/api/requests-status", {
@@ -244,13 +277,12 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Handle video end - uses refs to avoid stale closures
-  const handleVideoEnd = useCallback(() => {
+  // Play next song function
+  const playNextSong = useCallback(() => {
     const currentPlaying = currentPlayingRequestRef.current;
-    if (!currentPlaying) return;
-
-    // Mark current as played
-    updateStatusDirect(currentPlaying.id, "played");
+    if (currentPlaying) {
+      updateStatusDirect(currentPlaying.id, "played");
+    }
 
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
@@ -272,7 +304,16 @@ export default function Dashboard() {
     }
   }, [getNextSongFromRef, updateStatusDirect]);
 
-  // Load YouTube IFrame API once
+  // Handle video end
+  const handleVideoEnd = useCallback(() => {
+    if (progressCheckInterval.current) {
+      clearInterval(progressCheckInterval.current);
+      progressCheckInterval.current = null;
+    }
+    playNextSong();
+  }, [playNextSong]);
+
+  // Load YouTube IFrame API
   useEffect(() => {
     if (typeof window !== "undefined" && !window.YT) {
       const tag = document.createElement("script");
@@ -282,33 +323,42 @@ export default function Dashboard() {
     }
   }, []);
 
-  // ========================
-  // YOUTUBE PLAYER HOOK
-  // ========================
+  // YouTube Player Hook with improved autoplay detection
   useEffect(() => {
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
 
+      if (progressCheckInterval.current) {
+        clearInterval(progressCheckInterval.current);
+        progressCheckInterval.current = null;
+      }
+
       if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch (e) {}
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
         playerRef.current = null;
       }
       return;
     }
 
-    // Prevent re-init if same video already playing
     if (currentVideoId.current === videoModal && playerRef.current) return;
     currentVideoId.current = videoModal;
 
     const initPlayer = () => {
-      // Clean old player
       if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch (e) {}
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
         playerRef.current = null;
       }
 
-      // Force iframe attributes BEFORE JS API loads
+      if (progressCheckInterval.current) {
+        clearInterval(progressCheckInterval.current);
+        progressCheckInterval.current = null;
+      }
+
       const el = document.getElementById("youtube-player");
       if (el) {
         el.setAttribute("allow", "autoplay");
@@ -324,26 +374,49 @@ export default function Dashboard() {
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
+          iv_load_policy: 3,
+          fs: 1,
+          disablekb: 0,
+          playlist: videoModal,
+          loop: 0,
         },
         events: {
           onReady: (event) => {
             playerReady.current = true;
 
-            // Force autoplay
             event.target.mute();
             event.target.playVideo();
             setTimeout(() => {
-              try { event.target.playVideo(); } catch (e) {}
+              try {
+                event.target.playVideo();
+              } catch (e) {}
             }, 150);
 
             setIsPlaying(true);
 
-            // Auto-unmute after playback begins if user wants sound
             if (!isMutedRef.current) {
               setTimeout(() => {
-                try { event.target.unMute(); } catch (e) {}
+                try {
+                  event.target.unMute();
+                } catch (e) {}
               }, 400);
             }
+
+            // Start progress check for autoplay
+            progressCheckInterval.current = setInterval(() => {
+              try {
+                if (playerRef.current && playerReady.current) {
+                  const currentTime = playerRef.current.getCurrentTime();
+                  const duration = playerRef.current.getDuration();
+
+                  if (duration > 0 && currentTime >= duration - 0.5) {
+                    clearInterval(progressCheckInterval.current);
+                    progressCheckInterval.current = null;
+                    handleVideoEnd();
+                  }
+                }
+              } catch (e) {}
+            }, 500);
           },
 
           onStateChange: (event) => {
@@ -355,11 +428,17 @@ export default function Dashboard() {
               setIsPlaying(false);
             }
           },
+
+          onError: (event) => {
+            console.error("YouTube player error:", event.data);
+            setTimeout(() => {
+              handleVideoEnd();
+            }, 1000);
+          },
         },
       });
     };
 
-    // Wait for API then init
     if (window.YT && window.YT.Player) {
       setTimeout(initPlayer, 100);
     } else {
@@ -367,9 +446,15 @@ export default function Dashboard() {
         setTimeout(initPlayer, 100);
       };
     }
+
+    return () => {
+      if (progressCheckInterval.current) {
+        clearInterval(progressCheckInterval.current);
+        progressCheckInterval.current = null;
+      }
+    };
   }, [videoModal, handleVideoEnd]);
 
-  // Update mute state on player
   useEffect(() => {
     if (playerRef.current && playerReady.current) {
       try {
@@ -382,7 +467,6 @@ export default function Dashboard() {
     }
   }, [isMuted]);
 
-  // Play/Pause control
   const togglePlayPause = useCallback(() => {
     if (playerRef.current && playerReady.current) {
       try {
@@ -395,14 +479,12 @@ export default function Dashboard() {
     }
   }, [isPlaying]);
 
-  // Open video - also sets the playback tab
   function handleOpenVideo(request, fromTab) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
-      // Only change if different video
       if (currentVideoId.current !== request.youtube_video_id) {
         setCurrentPlayingRequest(request);
         setVideoModal(request.youtube_video_id);
-        setPlaybackTab(fromTab); // Set which tab's queue we're playing from
+        setPlaybackTab(fromTab);
       }
       setIsMinimized(false);
     } else {
@@ -411,26 +493,19 @@ export default function Dashboard() {
     }
   }
 
-  // Skip to next song manually
   function handleSkipToNext() {
-    const currentPlaying = currentPlayingRequestRef.current;
-    if (currentPlaying) {
-      updateStatusDirect(currentPlaying.id, "played");
+    if (progressCheckInterval.current) {
+      clearInterval(progressCheckInterval.current);
+      progressCheckInterval.current = null;
     }
-
-    const nextSong = getNextSongFromRef();
-    if (nextSong && nextSong.youtube_video_id) {
-      setCurrentPlayingRequest(nextSong);
-      setVideoModal(nextSong.youtube_video_id);
-    } else {
-      setVideoModal(null);
-      setCurrentPlayingRequest(null);
-      setPlaybackTab(null);
-    }
+    playNextSong();
   }
 
-  // Close modal without marking as played
   function handleCloseModal() {
+    if (progressCheckInterval.current) {
+      clearInterval(progressCheckInterval.current);
+      progressCheckInterval.current = null;
+    }
     setVideoModal(null);
     setCurrentPlayingRequest(null);
     setIsMinimized(false);
@@ -438,13 +513,17 @@ export default function Dashboard() {
     currentVideoId.current = null;
   }
 
-  // Approve current song and continue to next
   function handleApproveAndContinue() {
     const currentPlaying = currentPlayingRequestRef.current;
     if (currentPlaying) {
       updateStatusDirect(currentPlaying.id, "approved");
     }
-    
+
+    if (progressCheckInterval.current) {
+      clearInterval(progressCheckInterval.current);
+      progressCheckInterval.current = null;
+    }
+
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
       if (nextSong && nextSong.youtube_video_id) {
@@ -465,11 +544,14 @@ export default function Dashboard() {
     }
   }
 
-  // Mark as played and close
   function handleMarkPlayedAndClose() {
     const currentPlaying = currentPlayingRequestRef.current;
     if (currentPlaying) {
       updateStatusDirect(currentPlaying.id, "played");
+    }
+    if (progressCheckInterval.current) {
+      clearInterval(progressCheckInterval.current);
+      progressCheckInterval.current = null;
     }
     setVideoModal(null);
     setCurrentPlayingRequest(null);
@@ -478,7 +560,6 @@ export default function Dashboard() {
     currentVideoId.current = null;
   }
 
-  // Data fetching
   async function fetchDjProfile(userId) {
     try {
       let data;
@@ -604,8 +685,9 @@ export default function Dashboard() {
 
   async function deleteAllFiltered() {
     const count = filteredRequests.length;
-    const tabLabel = TABS.find(t => t.key === filterStatus)?.label || filterStatus;
-    
+    const tabLabel =
+      TABS.find((t) => t.key === filterStatus)?.label || filterStatus;
+
     if (
       !confirm(
         `Delete all ${count} ${tabLabel.toLowerCase()} items? This cannot be undone.`
@@ -660,7 +742,6 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
-  // Filter requests based on current viewing tab
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
@@ -669,7 +750,6 @@ export default function Dashboard() {
     return req.status === filterStatus;
   });
 
-  // Stats for each tab
   const stats = {
     total: requests.length,
     pending: requests.filter((r) => r.status === "pending").length,
@@ -680,21 +760,21 @@ export default function Dashboard() {
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
-  // Get next song for the current playback tab
   const nextSong = (() => {
     if (!playbackTab || !currentPlayingRequest) return null;
-    
-    const tabRequests = getRequestsForTab(playbackTab, requests)
-      .filter((r) => r.youtube_video_id);
-    
+
+    const tabRequests = getRequestsForTab(playbackTab, requests).filter(
+      (r) => r.youtube_video_id
+    );
+
     const currentIndex = tabRequests.findIndex(
       (r) => r.id === currentPlayingRequest.id
     );
-    
+
     if (currentIndex === -1 || currentIndex >= tabRequests.length - 1) {
       return tabRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
     }
-    
+
     return tabRequests[currentIndex + 1] || null;
   })();
 
@@ -709,7 +789,6 @@ export default function Dashboard() {
       {/* PERSISTENT PLAYER SYSTEM */}
       {videoModal && (
         <>
-          {/* Backdrop - only visible when NOT minimized */}
           <div
             className={`fixed inset-0 bg-black/95 backdrop-blur-md z-40 transition-opacity duration-200 ${
               isMinimized
@@ -719,12 +798,11 @@ export default function Dashboard() {
             onClick={() => setIsMinimized(true)}
           />
 
-          {/* SINGLE PERSISTENT PLAYER WRAPPER */}
           <div
             className={`fixed z-50 transition-all duration-300 ease-out ${
               isMinimized
                 ? "bottom-0 left-0 right-0 top-auto p-0"
-                : "inset-0 p-4 flex items-center justify-center"
+                : "inset-0 p-2 sm:p-4 flex items-center justify-center"
             }`}
           >
             <div
@@ -735,37 +813,34 @@ export default function Dashboard() {
               }`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Now Playing Header - only in full mode */}
               {!isMinimized && currentPlayingRequest && (
-                <div className="p-4 border-b border-white/5 bg-[#12121a]">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
-                        <Play size={18} className="text-pink-400 fill-pink-400" />
+                <div className="p-3 sm:p-4 border-b border-white/5 bg-[#12121a]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
+                        <Play size={16} className="text-pink-400 fill-pink-400" />
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">
                             Now Playing
                           </p>
                           {playbackTab && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              TABS.find(t => t.key === playbackTab)?.activeClass || 'bg-white/10'
-                            }`}>
-                              from {TABS.find(t => t.key === playbackTab)?.label}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${TABS.find((t) => t.key === playbackTab)?.activeClass || "bg-white/10"}`}>
+                              {TABS.find((t) => t.key === playbackTab)?.label}
                             </span>
                           )}
                         </div>
-                        <h3 className="font-semibold text-white truncate">
+                        <h3 className="font-semibold text-white text-sm sm:text-base truncate">
                           {currentPlayingRequest.title}
                         </h3>
-                        <p className="text-sm text-gray-400 truncate">
+                        <p className="text-xs sm:text-sm text-gray-400 truncate">
                           {currentPlayingRequest.artist}
                         </p>
                       </div>
                     </div>
                     {nextSong && (
-                      <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
+                      <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
                         <span>Up next:</span>
                         <span className="text-gray-300 truncate max-w-[150px]">
                           {nextSong.title}
@@ -776,249 +851,84 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* THE ACTUAL YOUTUBE PLAYER */}
-              <div
-                className={`bg-black transition-all duration-300 ${
-                  isMinimized ? "h-0 overflow-hidden" : "aspect-video"
-                }`}
-              >
+              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-0 overflow-hidden" : "aspect-video"}`}>
                 <div id="youtube-player" className="w-full h-full" />
               </div>
 
-              {/* Full Controls - only in full mode */}
               {!isMinimized && (
-                <div className="p-4 flex items-center justify-between border-t border-white/5 bg-[#12121a] flex-wrap gap-3">
-                  <div className="flex items-center gap-2 sm:gap-4">
-                    <button
-                      onClick={togglePlayPause}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                    >
-                      {isPlaying ? (
-                        <Pause size={18} className="text-white" />
-                      ) : (
-                        <Play size={18} className="text-white fill-white" />
-                      )}
+                <div className="p-2 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/5 bg-[#12121a] gap-2 sm:gap-3">
+                  <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
+                    <button onClick={togglePlayPause} className="p-2 sm:px-4 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
+                      {isPlaying ? <Pause size={18} className="text-white" /> : <Play size={18} className="text-white fill-white" />}
                     </button>
-
-                    <button
-                      onClick={() => setIsMuted(!isMuted)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                        isMuted
-                          ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                          : "bg-green-500/20 text-green-400 border border-green-500/30"
-                      }`}
-                    >
+                    <button onClick={() => setIsMuted(!isMuted)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-green-500/20 text-green-400 border border-green-500/30"}`}>
                       {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                      <span className="text-sm font-medium hidden sm:inline">
-                        {isMuted ? "Muted" : "Sound On"}
-                      </span>
                     </button>
-
-                    <button
-                      onClick={() => setAutoPlay(!autoPlay)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                        autoPlay
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : "bg-white/5 text-gray-400 hover:bg-white/10"
-                      }`}
-                    >
+                    <button onClick={() => setAutoPlay(!autoPlay)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${autoPlay ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
                       <SkipForward size={18} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        {autoPlay ? "Auto-play" : "Manual"}
-                      </span>
                     </button>
                   </div>
-
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
                     {nextSong && (
-                      <button
-                        onClick={handleSkipToNext}
-                        className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all flex items-center gap-2"
-                      >
+                      <button onClick={handleSkipToNext} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all">
                         <SkipForward size={16} />
-                        <span className="text-sm font-medium hidden sm:inline">
-                          Skip
-                        </span>
                       </button>
                     )}
-
-                    <button
-                      onClick={handleApproveAndContinue}
-                      className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all flex items-center gap-2"
-                    >
+                    <button onClick={handleApproveAndContinue} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all">
                       <ThumbsUp size={16} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        Approve
-                      </span>
                     </button>
-
-                    <button
-                      onClick={handleMarkPlayedAndClose}
-                      className="px-4 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all flex items-center gap-2"
-                    >
+                    <button onClick={handleMarkPlayedAndClose} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all">
                       <Check size={16} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        Played
-                      </span>
                     </button>
-
-                    <button
-                      onClick={() => setIsMinimized(true)}
-                      className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all flex items-center gap-2"
-                    >
+                    <button onClick={() => setIsMinimized(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all">
                       <Minimize2 size={16} />
-                      <span className="text-sm font-medium hidden sm:inline">
-                        Minimize
-                      </span>
                     </button>
-
-                    <button
-                      onClick={handleCloseModal}
-                      className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all flex items-center gap-2"
-                    >
+                    <button onClick={handleCloseModal} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
                       <X size={16} />
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Minimized Bar - only in minimized mode */}
               {isMinimized && currentPlayingRequest && (
                 <div className="bg-[#12121a] border-t border-white/10">
-                  <div className="max-w-6xl mx-auto px-4 py-3">
-                    <div className="flex items-center gap-4">
-                      {/* Thumbnail with playing indicator */}
-                      <div
-                        className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer"
-                        onClick={() => setIsMinimized(false)}
-                      >
+                  <div className="max-w-6xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
                         {currentPlayingRequest.thumbnail ? (
-                          <img
-                            src={currentPlayingRequest.thumbnail}
-                            alt={currentPlayingRequest.title}
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={currentPlayingRequest.thumbnail} alt={currentPlayingRequest.title} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
-                            <Music size={20} className="text-gray-600" />
+                            <Music size={18} className="text-gray-600" />
                           </div>
                         )}
-                        {/* Playing indicator overlay */}
                         <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
                           <div className="flex gap-0.5">
-                            <div
-                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
-                              style={{ animationDelay: "0ms" }}
-                            />
-                            <div
-                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
-                              style={{ animationDelay: "150ms" }}
-                            />
-                            <div
-                              className="w-0.5 h-3 bg-white rounded-full animate-pulse"
-                              style={{ animationDelay: "300ms" }}
-                            />
+                            {[0, 150, 300].map((delay) => (
+                              <div key={delay} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />
+                            ))}
                           </div>
                         </div>
                       </div>
-
-                      {/* Song Info */}
-                      <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => setIsMinimized(false)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-white text-sm truncate">
-                            {currentPlayingRequest.title}
-                          </h4>
-                          {playbackTab && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                              TABS.find(t => t.key === playbackTab)?.activeClass || 'bg-white/10'
-                            }`}>
-                              {TABS.find(t => t.key === playbackTab)?.label}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 truncate">
-                          {currentPlayingRequest.artist}
-                        </p>
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
+                        <h4 className="font-semibold text-white text-sm truncate">{currentPlayingRequest.title}</h4>
+                        <p className="text-xs text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                       </div>
-
-                      {/* Mini Controls */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={togglePlayPause}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                          title={isPlaying ? "Pause" : "Play"}
-                        >
-                          {isPlaying ? (
-                            <Pause size={18} className="text-white" />
-                          ) : (
-                            <Play size={18} className="text-white fill-white" />
-                          )}
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <button onClick={togglePlayPause} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
+                          {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white" />}
                         </button>
-
-                        <button
-                          onClick={() => setIsMuted(!isMuted)}
-                          className={`p-2 rounded-lg transition-all ${
-                            isMuted
-                              ? "bg-white/5 text-gray-400 hover:bg-white/10"
-                              : "bg-green-500/20 text-green-400"
-                          }`}
-                          title={isMuted ? "Unmute" : "Mute"}
-                        >
-                          {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                        <button onClick={() => setIsMuted(!isMuted)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400" : "bg-green-500/20 text-green-400"}`}>
+                          {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
-
-                        {nextSong && (
-                          <button
-                            onClick={handleSkipToNext}
-                            className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
-                            title={`Skip to: ${nextSong.title}`}
-                          >
-                            <SkipForward size={18} />
-                          </button>
-                        )}
-
-                        <button
-                          onClick={handleApproveAndContinue}
-                          className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 transition-all"
-                          title="Approve & Continue"
-                        >
-                          <ThumbsUp size={18} />
+                        <button onClick={() => setIsMinimized(false)} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all">
+                          <Maximize2 size={16} />
                         </button>
-
-                        <button
-                          onClick={() => setIsMinimized(false)}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all"
-                          title="Expand Player"
-                        >
-                          <Maximize2 size={18} />
-                        </button>
-
-                        <button
-                          onClick={handleCloseModal}
-                          className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
-                          title="Close Player"
-                        >
-                          <X size={18} />
+                        <button onClick={handleCloseModal} className="p-1.5 sm:p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
+                          <X size={16} />
                         </button>
                       </div>
                     </div>
-
-                    {/* Up Next Preview */}
-                    {nextSong && (
-                      <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
-                        <span>Up next:</span>
-                        <span className="text-gray-300 truncate">
-                          {nextSong.title}
-                        </span>
-                        <span className="text-gray-600">by</span>
-                        <span className="text-gray-400 truncate">
-                          {nextSong.artist}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -1028,61 +938,59 @@ export default function Dashboard() {
       )}
 
       {/* Main Content */}
-      <div
-        className={`relative max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 ${
-          videoModal && isMinimized ? "pb-32" : ""
-        }`}
-      >
+      <div className={`relative max-w-6xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-24 sm:pb-32" : ""}`}>
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <Disc3 size={24} className="text-white" />
+        <header className="flex items-center justify-between mb-4 sm:mb-8">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <Disc3 size={20} className="text-white sm:hidden" />
+              <Disc3 size={24} className="text-white hidden sm:block" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                TextMyTrack
-              </h1>
-              <p className="text-sm text-gray-500">DJ Request Dashboard</p>
+              <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">TextMyTrack</h1>
+              <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">DJ Request Dashboard</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => user && fetchRequests(user.id)}
-              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
-              title="Refresh"
-            >
-              <RefreshCw size={18} className="text-gray-400" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button onClick={() => user && fetchRequests(user.id)} className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all" title="Refresh">
+              <RefreshCw size={16} className="text-gray-400" />
             </button>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2"
-            >
+            <button onClick={handleLogout} className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2">
               <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </header>
 
+        {/* Mobile DJ Info Banner */}
+        <div className="lg:hidden mb-4 p-3 rounded-xl bg-[#12121a] border border-white/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Phone size={16} className="text-blue-400" />
+              <span className="text-sm text-gray-400">Request Line:</span>
+              {djProfile ? (
+                <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span>
+              ) : (
+                <span className="text-sm text-gray-500">Loading...</span>
+              )}
+            </div>
+            <span className="text-xs text-green-400 font-medium">● Live</span>
+          </div>
+        </div>
+
         {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* DJ Info Card */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+          {/* Sidebar - Hidden on mobile */}
+          <div className="hidden lg:block lg:col-span-1 space-y-6">
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                   <Phone size={18} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">
-                    Your Request Line
-                  </p>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Your Request Line</p>
                   {djProfile ? (
-                    <p className="text-lg font-bold text-white">
-                      {formatPhoneNumber(djProfile.twilio_number)}
-                    </p>
+                    <p className="text-lg font-bold text-white">{formatPhoneNumber(djProfile.twilio_number)}</p>
                   ) : profileError ? (
                     <p className="text-sm text-red-400">{profileError}</p>
                   ) : (
@@ -1091,60 +999,29 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
-                <span className="text-xs text-green-400 font-medium">
-                  ● Accepting Requests
-                </span>
+                <span className="text-xs text-green-400 font-medium">● Accepting Requests</span>
               </div>
             </div>
 
-            {/* Platform Selector */}
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
-              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">
-                Open Songs In
-              </p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Open Songs In</p>
               <div className="space-y-2">
                 {Object.entries(PLATFORMS).map(([key, platform]) => (
-                  <button
-                    key={key}
-                    onClick={() => updatePlatformPreference(key)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                      selectedPlatform === key
-                        ? `${platform.bgColor} ${platform.borderColor} border-2`
-                        : "bg-white/5 border border-transparent hover:bg-white/10"
-                    }`}
-                  >
+                  <button key={key} onClick={() => updatePlatformPreference(key)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${selectedPlatform === key ? `${platform.bgColor} ${platform.borderColor} border-2` : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
                     <span className="text-xl">{platform.icon}</span>
-                    <span
-                      className={`font-medium ${
-                        selectedPlatform === key
-                          ? platform.textColor
-                          : "text-gray-300"
-                      }`}
-                    >
-                      {platform.name}
-                    </span>
-                    {selectedPlatform === key && (
-                      <CheckCircle2
-                        size={16}
-                        className={`ml-auto ${platform.textColor}`}
-                      />
-                    )}
+                    <span className={`font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>
+                    {selectedPlatform === key && <CheckCircle2 size={16} className={`ml-auto ${platform.textColor}`} />}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Quick Stats */}
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
-              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">
-                Tonight's Stats
-              </p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Tonight's Stats</p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400 text-sm">Total</span>
-                  <span className="text-white font-bold text-lg">
-                    {stats.total}
-                  </span>
+                  <span className="text-white font-bold text-lg">{stats.total}</span>
                 </div>
                 <div className="h-px bg-white/5" />
                 <div className="flex items-center justify-between">
@@ -1152,36 +1029,28 @@ export default function Dashboard() {
                     <Circle size={8} className="fill-yellow-400 text-yellow-400" />
                     <span className="text-gray-400 text-sm">Pending</span>
                   </div>
-                  <span className="text-yellow-400 font-semibold">
-                    {stats.pending}
-                  </span>
+                  <span className="text-yellow-400 font-semibold">{stats.pending}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Circle size={8} className="fill-blue-400 text-blue-400" />
                     <span className="text-gray-400 text-sm">Approved</span>
                   </div>
-                  <span className="text-blue-400 font-semibold">
-                    {stats.approved}
-                  </span>
+                  <span className="text-blue-400 font-semibold">{stats.approved}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Circle size={8} className="fill-red-400 text-red-400" />
                     <span className="text-gray-400 text-sm">Rejected</span>
                   </div>
-                  <span className="text-red-400 font-semibold">
-                    {stats.rejected}
-                  </span>
+                  <span className="text-red-400 font-semibold">{stats.rejected}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Circle size={8} className="fill-green-400 text-green-400" />
                     <span className="text-gray-400 text-sm">Played</span>
                   </div>
-                  <span className="text-green-400 font-semibold">
-                    {stats.played}
-                  </span>
+                  <span className="text-green-400 font-semibold">{stats.played}</span>
                 </div>
               </div>
             </div>
@@ -1189,236 +1058,207 @@ export default function Dashboard() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Filter Tabs */}
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            {/* Tab Navigation with Arrows */}
+            <div className="flex items-center gap-1 sm:gap-2 mb-4 sm:mb-6">
+              <button onClick={() => scrollTabs("left")} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex-shrink-0 ${!canScrollLeft ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!canScrollLeft}>
+                <ChevronLeft size={18} className="text-gray-400" />
+              </button>
+
+              <div ref={tabContainerRef} onScroll={checkScrollButtons} className="flex-1 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scroll-smooth" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
                 {TABS.map((tab) => {
                   const TabIcon = tab.icon;
                   const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
-                  
                   return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setFilterStatus(tab.key)}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap border ${
-                        filterStatus === tab.key
-                          ? tab.activeClass
-                          : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"
-                      }`}
-                    >
-                      <TabIcon size={16} />
-                      <span>{tab.label}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md text-xs ${
-                        filterStatus === tab.key
-                          ? "bg-white/20"
-                          : "bg-white/10"
-                      }`}>
-                        {count}
-                      </span>
+                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap border flex-shrink-0 ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"}`}>
+                      <TabIcon size={14} className="sm:w-4 sm:h-4" />
+                      <span>{tab.shortLabel}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
                     </button>
                   );
                 })}
               </div>
 
+              <button onClick={() => scrollTabs("right")} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex-shrink-0 ${!canScrollRight ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!canScrollRight}>
+                <ChevronRight size={18} className="text-gray-400" />
+              </button>
+
               {filteredRequests.length > 0 && (
-                <button
-                  onClick={deleteAllFiltered}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 whitespace-nowrap"
-                >
+                <button onClick={deleteAllFiltered} className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0" title="Clear All">
                   <Trash2 size={16} />
-                  <span className="hidden sm:inline">Clear All</span>
                 </button>
               )}
             </div>
 
-            {/* Playback Tab Indicator */}
             {playbackTab && playbackTab !== filterStatus && (
-              <div className="mb-4 p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm">
+              <div className="mb-4 p-2.5 sm:p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs sm:text-sm">
                   <div className="flex gap-0.5">
-                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
-                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
-                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+                    {[0, 150, 300].map((delay) => (
+                      <div key={delay} className="w-1 h-3 sm:h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />
+                    ))}
                   </div>
-                  <span className="text-pink-400">
-                    Playing from <strong>{TABS.find(t => t.key === playbackTab)?.label}</strong> tab
-                  </span>
+                  <span className="text-pink-400">Playing: <strong>{TABS.find((t) => t.key === playbackTab)?.label}</strong></span>
                 </div>
-                <button
-                  onClick={() => setFilterStatus(playbackTab)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 transition-all"
-                >
-                  Go to queue
-                </button>
+                <button onClick={() => setFilterStatus(playbackTab)} className="text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 transition-all">View</button>
               </div>
             )}
 
-            {/* Request List */}
             {loading ? (
-              <div className="text-center py-20">
-                <div className="w-12 h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-gray-500">Loading requests...</p>
+              <div className="text-center py-12 sm:py-20">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-gray-500 text-sm">Loading requests...</p>
               </div>
             ) : filteredRequests.length === 0 ? (
-              <div className="text-center py-20">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
-                  <ListMusic size={32} className="text-gray-600" />
+              <div className="text-center py-12 sm:py-20">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <ListMusic size={28} className="text-gray-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-400 mb-2">
-                  No {TABS.find(t => t.key === filterStatus)?.label.toLowerCase() || filterStatus} yet
-                </h3>
-                <p className="text-gray-600 text-sm">
-                  {filterStatus === "pending"
-                    ? "Waiting for song requests to come in..."
-                    : filterStatus === "approved"
-                    ? "Approve requests to see them here"
-                    : filterStatus === "rejected"
-                    ? "Rejected requests will appear here"
-                    : filterStatus === "played"
-                    ? "Played songs will appear here"
-                    : "No requests yet"}
+                <h3 className="text-base sm:text-lg font-semibold text-gray-400 mb-2">No {TABS.find((t) => t.key === filterStatus)?.label.toLowerCase()} yet</h3>
+                <p className="text-gray-600 text-xs sm:text-sm px-4">
+                  {filterStatus === "pending" ? "Waiting for song requests..." : filterStatus === "approved" ? "Approve requests to see them here" : filterStatus === "rejected" ? "Rejected requests will appear here" : filterStatus === "played" ? "Played songs will appear here" : "No requests yet"}
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
-                  const isCurrentlyPlaying =
-                    videoModal &&
-                    currentPlayingRequest?.id === req.id;
-
-                  // Determine action buttons based on status
+                  const isCurrentlyPlaying = videoModal && currentPlayingRequest?.id === req.id;
                   const isPending = req.status === "pending";
                   const isApproved = req.status === "approved";
                   const isRejected = req.status === "rejected";
                   const isPlayed = req.status === "played";
 
                   return (
-                    <div
-                      key={req.id}
-                      className={`group p-4 rounded-2xl border transition-all ${
-                        isCurrentlyPlaying
-                          ? "bg-pink-500/10 border-pink-500/30"
-                          : "bg-[#12121a] border-white/5 hover:border-white/10"
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-medium text-gray-500">
-                            {index + 1}
-                          </span>
-                        </div>
-
-                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
-                          {req.thumbnail ? (
-                            <img
-                              src={req.thumbnail}
-                              alt={req.title}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Music size={24} className="text-gray-600" />
+                    <div key={req.id} className={`group p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${isCurrentlyPlaying ? "bg-pink-500/10 border-pink-500/30" : "bg-[#12121a] border-white/5 hover:border-white/10"}`}>
+                      {/* Mobile Layout */}
+                      <div className="sm:hidden">
+                        <div className="flex items-start gap-3">
+                          <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                            {req.thumbnail ? <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Music size={20} className="text-gray-600" /></div>}
+                            {hasUrl && !isCurrentlyPlaying && (
+                              <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                <Play size={18} className="text-white fill-white" />
+                              </button>
+                            )}
+                            {isCurrentlyPlaying && (
+                              <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
+                                <div className="flex gap-0.5">
+                                  {[0, 150, 300].map((delay) => <div key={delay} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <h3 className="font-semibold text-white text-sm leading-tight truncate" onClick={() => hasUrl && handleOpenVideo(req, filterStatus)}>{req.title}</h3>
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{req.artist}</p>
+                              </div>
+                              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                                {isCurrentlyPlaying ? "▶" : isPlayed ? "✓" : isApproved ? "👍" : isRejected ? "✕" : "⏳"}
+                              </span>
                             </div>
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
+                              {req.explicit === "Explicit" && <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">E</span>}
+                              <span className="truncate">{req.requestedBy}</span>
+                              <span>•</span>
+                              <span>{timeAgo(req.requestedAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-white/5">
+                          {hasUrl && (
+                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all flex items-center justify-center gap-1.5 text-xs text-gray-300">
+                              <Play size={14} className="fill-current" />Play
+                            </button>
                           )}
+                          {isPending && (
+                            <>
+                              <button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-blue-400">
+                                <ThumbsUp size={14} />Approve
+                              </button>
+                              <button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all">
+                                <Ban size={14} className="text-red-400" />
+                              </button>
+                            </>
+                          )}
+                          {isApproved && (
+                            <>
+                              <button onClick={() => updateStatus(req.id, "played")} className="flex-1 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-green-400">
+                                <Check size={14} />Played
+                              </button>
+                              <button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all">
+                                <Ban size={14} className="text-red-400" />
+                              </button>
+                            </>
+                          )}
+                          {isRejected && (
+                            <>
+                              <button onClick={() => updateStatus(req.id, "pending")} className="flex-1 py-2 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-yellow-400">
+                                <Clock size={14} />Restore
+                              </button>
+                              <button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10 transition-all">
+                                <Trash2 size={14} className="text-gray-500" />
+                              </button>
+                            </>
+                          )}
+                          {isPlayed && (
+                            <>
+                              <button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-blue-400">
+                                <ThumbsUp size={14} />Re-add
+                              </button>
+                              <button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10 transition-all">
+                                <Trash2 size={14} className="text-gray-500" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Desktop Layout */}
+                      <div className="hidden sm:flex items-center gap-4">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 hidden md:flex">
+                          <span className="text-sm font-medium text-gray-500">{index + 1}</span>
+                        </div>
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                          {req.thumbnail ? <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Music size={24} className="text-gray-600" /></div>}
                           {hasUrl && !isCurrentlyPlaying && (
-                            <button
-                              onClick={() => handleOpenVideo(req, filterStatus)}
-                              className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                            >
+                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <Play size={24} className="text-white fill-white" />
                             </button>
                           )}
                           {isCurrentlyPlaying && (
-                            <button
-                              onClick={() => setIsMinimized(false)}
-                              className="absolute inset-0 bg-pink-500/30 flex items-center justify-center"
-                            >
+                            <button onClick={() => setIsMinimized(false)} className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
                               <div className="flex gap-0.5">
-                                <div
-                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
-                                  style={{ animationDelay: "0ms" }}
-                                />
-                                <div
-                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
-                                  style={{ animationDelay: "150ms" }}
-                                />
-                                <div
-                                  className="w-1 h-4 bg-white rounded-full animate-pulse"
-                                  style={{ animationDelay: "300ms" }}
-                                />
+                                {[0, 150, 300].map((delay) => <div key={delay} className="w-1 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />)}
                               </div>
                             </button>
                           )}
                         </div>
-
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1 overflow-hidden">
                               {hasUrl ? (
-                                <button
-                                  onClick={() => handleOpenVideo(req, filterStatus)}
-                                  className="block w-full text-left group/title"
-                                >
+                                <button onClick={() => handleOpenVideo(req, filterStatus)} className="block w-full text-left group/title">
                                   <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">
                                     {req.title}
-                                    <ExternalLink
-                                      size={14}
-                                      className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400"
-                                    />
+                                    <ExternalLink size={14} className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
                                   </h3>
                                 </button>
                               ) : (
-                                <h3 className="font-semibold text-white truncate">
-                                  {req.title}
-                                </h3>
+                                <h3 className="font-semibold text-white truncate">{req.title}</h3>
                               )}
-                              <p className="text-sm text-gray-400 truncate">
-                                {req.artist}
-                              </p>
+                              <p className="text-sm text-gray-400 truncate">{req.artist}</p>
                             </div>
-
-                            {/* Status Badge */}
-                            <span
-                              className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                isCurrentlyPlaying
-                                  ? "bg-pink-500/20 text-pink-400"
-                                  : isPlayed
-                                  ? "bg-green-500/10 text-green-400"
-                                  : isApproved
-                                  ? "bg-blue-500/10 text-blue-400"
-                                  : isRejected
-                                  ? "bg-red-500/10 text-red-400"
-                                  : "bg-yellow-500/10 text-yellow-400"
-                              }`}
-                            >
-                              {isCurrentlyPlaying
-                                ? "Playing"
-                                : isPlayed
-                                ? "Played"
-                                : isApproved
-                                ? "Approved"
-                                : isRejected
-                                ? "Rejected"
-                                : "Pending"}
+                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
                             </span>
                           </div>
-
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
                             <div className="flex items-center gap-1.5">
-                              {req.genre && req.genre !== "Unknown" && (
-                                <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                  {req.genre}
-                                </span>
-                              )}
+                              {req.genre && req.genre !== "Unknown" && <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">{req.genre}</span>}
                               {req.explicit && req.explicit !== "Unknown" && (
-                                <span
-                                  className={`px-2 py-0.5 rounded-md text-xs border ${
-                                    req.explicit === "Explicit"
-                                      ? "bg-red-500/10 text-red-400 border-red-500/20"
-                                      : "bg-green-500/10 text-green-400 border-green-500/20"
-                                  }`}
-                                >
+                                <span className={`px-2 py-0.5 rounded-md text-xs border ${req.explicit === "Explicit" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-green-500/10 text-green-400 border-green-500/20"}`}>
                                   {req.explicit === "Explicit" ? "Explicit" : "Clean"}
                                 </span>
                               )}
@@ -1426,9 +1266,7 @@ export default function Dashboard() {
                             <span className="text-gray-600">•</span>
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <User size={12} />
-                              <span className="truncate max-w-[100px]">
-                                {req.requestedBy}
-                              </span>
+                              <span className="truncate max-w-[100px]">{req.requestedBy}</span>
                             </div>
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <Clock size={12} />
@@ -1436,94 +1274,48 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </div>
-
-                        {/* Action Buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {hasUrl && (
-                            <button
-                              onClick={() => handleOpenVideo(req, filterStatus)}
-                              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
-                              title={`Preview on ${currentPlatform.name}`}
-                            >
+                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" title={`Preview on ${currentPlatform.name}`}>
                               <ExternalLink size={16} className="text-gray-400" />
                             </button>
                           )}
-
-                          {/* Pending: Approve and Reject */}
                           {isPending && (
                             <>
-                              <button
-                                onClick={() => updateStatus(req.id, "approved")}
-                                className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
-                                title="Approve"
-                              >
+                              <button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all" title="Approve">
                                 <ThumbsUp size={16} className="text-blue-400" />
                               </button>
-                              <button
-                                onClick={() => updateStatus(req.id, "rejected")}
-                                className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all"
-                                title="Reject"
-                              >
+                              <button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all" title="Reject">
                                 <Ban size={16} className="text-red-400" />
                               </button>
                             </>
                           )}
-
-                          {/* Approved: Mark as Played and Reject */}
                           {isApproved && (
                             <>
-                              <button
-                                onClick={() => updateStatus(req.id, "played")}
-                                className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all"
-                                title="Mark as Played"
-                              >
+                              <button onClick={() => updateStatus(req.id, "played")} className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all" title="Mark as Played">
                                 <Check size={16} className="text-green-400" />
                               </button>
-                              <button
-                                onClick={() => updateStatus(req.id, "rejected")}
-                                className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all"
-                                title="Reject"
-                              >
+                              <button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all" title="Reject">
                                 <Ban size={16} className="text-red-400" />
                               </button>
                             </>
                           )}
-
-                          {/* Rejected: Restore to Pending and Delete */}
                           {isRejected && (
                             <>
-                              <button
-                                onClick={() => updateStatus(req.id, "pending")}
-                                className="p-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all"
-                                title="Restore to Pending"
-                              >
+                              <button onClick={() => updateStatus(req.id, "pending")} className="p-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all" title="Restore to Pending">
                                 <Clock size={16} className="text-yellow-400" />
                               </button>
-                              <button
-                                onClick={() => deleteRequest(req.id)}
-                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
-                                title="Delete"
-                              >
+                              <button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all" title="Delete">
                                 <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
                               </button>
                             </>
                           )}
-
-                          {/* Played: Replay (move to approved) and Delete */}
                           {isPlayed && (
                             <>
-                              <button
-                                onClick={() => updateStatus(req.id, "approved")}
-                                className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
-                                title="Move to Approved"
-                              >
+                              <button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all" title="Move to Approved">
                                 <ThumbsUp size={16} className="text-blue-400" />
                               </button>
-                              <button
-                                onClick={() => deleteRequest(req.id)}
-                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
-                                title="Delete"
-                              >
+                              <button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all" title="Delete">
                                 <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
                               </button>
                             </>
@@ -1538,12 +1330,15 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <footer className="mt-12 pt-6 border-t border-white/5 text-center">
-          <p className="text-xs text-gray-600">
-            TextMyTrack • Built for DJs who take requests
-          </p>
+        <footer className="mt-8 sm:mt-12 pt-4 sm:pt-6 border-t border-white/5 text-center">
+          <p className="text-[10px] sm:text-xs text-gray-600">TextMyTrack • Built for DJs who take requests</p>
         </footer>
       </div>
+
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </main>
   );
 }
