@@ -875,7 +875,7 @@ export default function Dashboard() {
       )}
 
       {/* Main Content */}
-      <div className={`relative max-w-6xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-28 sm:pb-36" : ""}`}>
+      <div className={`relative max-w-7xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-28 sm:pb-36" : ""}`}>
         {/* Header */}
         <header className="flex items-center justify-between mb-4 sm:mb-8">
           <div className="flex items-center gap-2 sm:gap-4">
