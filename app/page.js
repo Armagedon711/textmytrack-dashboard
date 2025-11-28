@@ -28,8 +28,8 @@ import {
   Ban,
   History,
   Layers,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -143,12 +143,11 @@ export default function Dashboard() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [playbackTab, setPlaybackTab] = useState(null);
 
-  // Tab scroll state
-  const tabContainerRef = useRef(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  // Mobile expandable sections
+  const [showMobileStats, setShowMobileStats] = useState(false);
+  const [showMobilePlatforms, setShowMobilePlatforms] = useState(false);
 
-  // Refs for stable references
+  // Refs for stable references - CRITICAL for avoiding stale closures
   const playerRef = useRef(null);
   const playerReady = useRef(false);
   const currentVideoId = useRef(null);
@@ -157,7 +156,8 @@ export default function Dashboard() {
   const autoPlayRef = useRef(autoPlay);
   const isMutedRef = useRef(isMuted);
   const playbackTabRef = useRef(playbackTab);
-  const progressCheckInterval = useRef(null);
+  const handleVideoEndRef = useRef(null);
+  const isTransitioning = useRef(false);
 
   // Keep refs in sync
   useEffect(() => {
@@ -179,35 +179,6 @@ export default function Dashboard() {
   useEffect(() => {
     playbackTabRef.current = playbackTab;
   }, [playbackTab]);
-
-  // Check tab scroll buttons visibility
-  const checkScrollButtons = useCallback(() => {
-    const container = tabContainerRef.current;
-    if (container) {
-      setCanScrollLeft(container.scrollLeft > 0);
-      setCanScrollRight(
-        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    checkScrollButtons();
-    window.addEventListener("resize", checkScrollButtons);
-    return () => window.removeEventListener("resize", checkScrollButtons);
-  }, [checkScrollButtons]);
-
-  const scrollTabs = (direction) => {
-    const container = tabContainerRef.current;
-    if (container) {
-      const scrollAmount = 150;
-      container.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-      setTimeout(checkScrollButtons, 300);
-    }
-  };
 
   // Helper functions
   function getPlatformUrl(request) {
@@ -277,9 +248,15 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Play next song function
+  // Play next song - this is the core function for autoplay
   const playNextSong = useCallback(() => {
+    // Prevent multiple rapid calls
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+
     const currentPlaying = currentPlayingRequestRef.current;
+    
+    // Mark current as played
     if (currentPlaying) {
       updateStatusDirect(currentPlaying.id, "played");
     }
@@ -287,30 +264,32 @@ export default function Dashboard() {
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
       if (nextSong && nextSong.youtube_video_id) {
-        setCurrentPlayingRequest(nextSong);
-        setVideoModal(nextSong.youtube_video_id);
-        currentVideoId.current = nextSong.youtube_video_id;
+        // Small delay to ensure state updates properly
+        setTimeout(() => {
+          setCurrentPlayingRequest(nextSong);
+          setVideoModal(nextSong.youtube_video_id);
+          currentVideoId.current = nextSong.youtube_video_id;
+          isTransitioning.current = false;
+        }, 100);
       } else {
         setVideoModal(null);
         setCurrentPlayingRequest(null);
         setPlaybackTab(null);
         currentVideoId.current = null;
+        isTransitioning.current = false;
       }
     } else {
       setVideoModal(null);
       setCurrentPlayingRequest(null);
       setPlaybackTab(null);
       currentVideoId.current = null;
+      isTransitioning.current = false;
     }
   }, [getNextSongFromRef, updateStatusDirect]);
 
-  // Handle video end
-  const handleVideoEnd = useCallback(() => {
-    if (progressCheckInterval.current) {
-      clearInterval(progressCheckInterval.current);
-      progressCheckInterval.current = null;
-    }
-    playNextSong();
+  // Keep handleVideoEndRef updated with latest playNextSong
+  useEffect(() => {
+    handleVideoEndRef.current = playNextSong;
   }, [playNextSong]);
 
   // Load YouTube IFrame API
@@ -323,16 +302,11 @@ export default function Dashboard() {
     }
   }, []);
 
-  // YouTube Player Hook with improved autoplay detection
+  // YouTube Player Hook - FIXED: No handleVideoEnd in dependencies
   useEffect(() => {
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
-
-      if (progressCheckInterval.current) {
-        clearInterval(progressCheckInterval.current);
-        progressCheckInterval.current = null;
-      }
 
       if (playerRef.current) {
         try {
@@ -343,28 +317,25 @@ export default function Dashboard() {
       return;
     }
 
-    if (currentVideoId.current === videoModal && playerRef.current) return;
+    // Skip if same video already playing
+    if (currentVideoId.current === videoModal && playerRef.current && playerReady.current) {
+      return;
+    }
+    
     currentVideoId.current = videoModal;
 
     const initPlayer = () => {
+      // Destroy existing player
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
         } catch (e) {}
         playerRef.current = null;
+        playerReady.current = false;
       }
 
-      if (progressCheckInterval.current) {
-        clearInterval(progressCheckInterval.current);
-        progressCheckInterval.current = null;
-      }
-
-      const el = document.getElementById("youtube-player");
-      if (el) {
-        el.setAttribute("allow", "autoplay");
-        el.setAttribute("playsinline", "1");
-        el.setAttribute("allowfullscreen", "1");
-      }
+      const container = document.getElementById("youtube-player");
+      if (!container) return;
 
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
@@ -376,85 +347,64 @@ export default function Dashboard() {
           modestbranding: 1,
           iv_load_policy: 3,
           fs: 1,
-          disablekb: 0,
-          playlist: videoModal,
-          loop: 0,
+          controls: 1,
+          // Remove playlist param - it can cause looping issues
         },
         events: {
           onReady: (event) => {
             playerReady.current = true;
-
-            event.target.mute();
             event.target.playVideo();
-            setTimeout(() => {
-              try {
-                event.target.playVideo();
-              } catch (e) {}
-            }, 150);
-
             setIsPlaying(true);
 
+            // Unmute after a short delay if user preference is unmuted
             if (!isMutedRef.current) {
               setTimeout(() => {
                 try {
                   event.target.unMute();
                 } catch (e) {}
-              }, 400);
+              }, 500);
             }
-
-            // Start progress check for autoplay
-            progressCheckInterval.current = setInterval(() => {
-              try {
-                if (playerRef.current && playerReady.current) {
-                  const currentTime = playerRef.current.getCurrentTime();
-                  const duration = playerRef.current.getDuration();
-
-                  if (duration > 0 && currentTime >= duration - 0.5) {
-                    clearInterval(progressCheckInterval.current);
-                    progressCheckInterval.current = null;
-                    handleVideoEnd();
-                  }
-                }
-              } catch (e) {}
-            }, 500);
           },
 
           onStateChange: (event) => {
-            if (event.data === window.YT.PlayerState.ENDED) {
-              handleVideoEnd();
-            } else if (event.data === window.YT.PlayerState.PLAYING) {
+            // ENDED = 0
+            if (event.data === 0) {
+              console.log("Video ended - triggering next song");
+              // Use ref to always get latest function
+              if (handleVideoEndRef.current) {
+                handleVideoEndRef.current();
+              }
+            } else if (event.data === 1) { // PLAYING
               setIsPlaying(true);
-            } else if (event.data === window.YT.PlayerState.PAUSED) {
+            } else if (event.data === 2) { // PAUSED
               setIsPlaying(false);
             }
           },
 
           onError: (event) => {
             console.error("YouTube player error:", event.data);
+            // Skip to next on error
             setTimeout(() => {
-              handleVideoEnd();
+              if (handleVideoEndRef.current) {
+                handleVideoEndRef.current();
+              }
             }, 1000);
           },
         },
       });
     };
 
+    // Wait for YT API
     if (window.YT && window.YT.Player) {
-      setTimeout(initPlayer, 100);
+      setTimeout(initPlayer, 150);
     } else {
       window.onYouTubeIframeAPIReady = () => {
-        setTimeout(initPlayer, 100);
+        setTimeout(initPlayer, 150);
       };
     }
+  }, [videoModal]); // Only depend on videoModal, not handleVideoEnd
 
-    return () => {
-      if (progressCheckInterval.current) {
-        clearInterval(progressCheckInterval.current);
-        progressCheckInterval.current = null;
-      }
-    };
-  }, [videoModal, handleVideoEnd]);
-
+  // Update mute state
   useEffect(() => {
     if (playerRef.current && playerReady.current) {
       try {
@@ -494,23 +444,16 @@ export default function Dashboard() {
   }
 
   function handleSkipToNext() {
-    if (progressCheckInterval.current) {
-      clearInterval(progressCheckInterval.current);
-      progressCheckInterval.current = null;
-    }
     playNextSong();
   }
 
   function handleCloseModal() {
-    if (progressCheckInterval.current) {
-      clearInterval(progressCheckInterval.current);
-      progressCheckInterval.current = null;
-    }
     setVideoModal(null);
     setCurrentPlayingRequest(null);
     setIsMinimized(false);
     setPlaybackTab(null);
     currentVideoId.current = null;
+    isTransitioning.current = false;
   }
 
   function handleApproveAndContinue() {
@@ -519,28 +462,19 @@ export default function Dashboard() {
       updateStatusDirect(currentPlaying.id, "approved");
     }
 
-    if (progressCheckInterval.current) {
-      clearInterval(progressCheckInterval.current);
-      progressCheckInterval.current = null;
-    }
-
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
       if (nextSong && nextSong.youtube_video_id) {
-        setCurrentPlayingRequest(nextSong);
-        setVideoModal(nextSong.youtube_video_id);
-        currentVideoId.current = nextSong.youtube_video_id;
+        setTimeout(() => {
+          setCurrentPlayingRequest(nextSong);
+          setVideoModal(nextSong.youtube_video_id);
+          currentVideoId.current = nextSong.youtube_video_id;
+        }, 100);
       } else {
-        setVideoModal(null);
-        setCurrentPlayingRequest(null);
-        setPlaybackTab(null);
-        currentVideoId.current = null;
+        handleCloseModal();
       }
     } else {
-      setVideoModal(null);
-      setCurrentPlayingRequest(null);
-      setPlaybackTab(null);
-      currentVideoId.current = null;
+      handleCloseModal();
     }
   }
 
@@ -549,17 +483,10 @@ export default function Dashboard() {
     if (currentPlaying) {
       updateStatusDirect(currentPlaying.id, "played");
     }
-    if (progressCheckInterval.current) {
-      clearInterval(progressCheckInterval.current);
-      progressCheckInterval.current = null;
-    }
-    setVideoModal(null);
-    setCurrentPlayingRequest(null);
-    setIsMinimized(false);
-    setPlaybackTab(null);
-    currentVideoId.current = null;
+    handleCloseModal();
   }
 
+  // Data fetching
   async function fetchDjProfile(userId) {
     try {
       let data;
@@ -685,15 +612,9 @@ export default function Dashboard() {
 
   async function deleteAllFiltered() {
     const count = filteredRequests.length;
-    const tabLabel =
-      TABS.find((t) => t.key === filterStatus)?.label || filterStatus;
+    const tabLabel = TABS.find((t) => t.key === filterStatus)?.label || filterStatus;
 
-    if (
-      !confirm(
-        `Delete all ${count} ${tabLabel.toLowerCase()} items? This cannot be undone.`
-      )
-    )
-      return;
+    if (!confirm(`Delete all ${count} ${tabLabel.toLowerCase()} items? This cannot be undone.`)) return;
 
     try {
       const deletePromises = filteredRequests.map((req) =>
@@ -760,6 +681,7 @@ export default function Dashboard() {
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
+  // Calculate next song for UI display
   const nextSong = (() => {
     if (!playbackTab || !currentPlayingRequest) return null;
 
@@ -791,9 +713,7 @@ export default function Dashboard() {
         <>
           <div
             className={`fixed inset-0 bg-black/95 backdrop-blur-md z-40 transition-opacity duration-200 ${
-              isMinimized
-                ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto"
+              isMinimized ? "opacity-0 pointer-events-none" : "opacity-100 pointer-events-auto"
             }`}
             onClick={() => setIsMinimized(true)}
           />
@@ -813,6 +733,7 @@ export default function Dashboard() {
               }`}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Full Mode Header */}
               {!isMinimized && currentPlayingRequest && (
                 <div className="p-3 sm:p-4 border-b border-white/5 bg-[#12121a]">
                   <div className="flex items-center justify-between gap-2">
@@ -822,39 +743,33 @@ export default function Dashboard() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">
-                            Now Playing
-                          </p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">Now Playing</p>
                           {playbackTab && (
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${TABS.find((t) => t.key === playbackTab)?.activeClass || "bg-white/10"}`}>
                               {TABS.find((t) => t.key === playbackTab)?.label}
                             </span>
                           )}
                         </div>
-                        <h3 className="font-semibold text-white text-sm sm:text-base truncate">
-                          {currentPlayingRequest.title}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-gray-400 truncate">
-                          {currentPlayingRequest.artist}
-                        </p>
+                        <h3 className="font-semibold text-white text-sm sm:text-base truncate">{currentPlayingRequest.title}</h3>
+                        <p className="text-xs sm:text-sm text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                       </div>
                     </div>
                     {nextSong && (
                       <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
                         <span>Up next:</span>
-                        <span className="text-gray-300 truncate max-w-[150px]">
-                          {nextSong.title}
-                        </span>
+                        <span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
+              {/* YouTube Player */}
               <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-0 overflow-hidden" : "aspect-video"}`}>
                 <div id="youtube-player" className="w-full h-full" />
               </div>
 
+              {/* Full Mode Controls */}
               {!isMinimized && (
                 <div className="p-2 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/5 bg-[#12121a] gap-2 sm:gap-3">
                   <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
@@ -864,36 +779,38 @@ export default function Dashboard() {
                     <button onClick={() => setIsMuted(!isMuted)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-green-500/20 text-green-400 border border-green-500/30"}`}>
                       {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                     </button>
-                    <button onClick={() => setAutoPlay(!autoPlay)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${autoPlay ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>
+                    <button onClick={() => setAutoPlay(!autoPlay)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${autoPlay ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"}`} title={autoPlay ? "Auto-play ON" : "Auto-play OFF"}>
                       <SkipForward size={18} />
                     </button>
                   </div>
                   <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
                     {nextSong && (
-                      <button onClick={handleSkipToNext} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all">
+                      <button onClick={handleSkipToNext} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all" title="Skip to next">
                         <SkipForward size={16} />
                       </button>
                     )}
-                    <button onClick={handleApproveAndContinue} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all">
+                    <button onClick={handleApproveAndContinue} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all" title="Approve">
                       <ThumbsUp size={16} />
                     </button>
-                    <button onClick={handleMarkPlayedAndClose} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all">
+                    <button onClick={handleMarkPlayedAndClose} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all" title="Mark as Played">
                       <Check size={16} />
                     </button>
-                    <button onClick={() => setIsMinimized(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all">
+                    <button onClick={() => setIsMinimized(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all" title="Minimize">
                       <Minimize2 size={16} />
                     </button>
-                    <button onClick={handleCloseModal} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
+                    <button onClick={handleCloseModal} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all" title="Close">
                       <X size={16} />
                     </button>
                   </div>
                 </div>
               )}
 
+              {/* Minimized Bar */}
               {isMinimized && currentPlayingRequest && (
                 <div className="bg-[#12121a] border-t border-white/10">
                   <div className="max-w-6xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
                     <div className="flex items-center gap-3">
+                      {/* Thumbnail */}
                       <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
                         {currentPlayingRequest.thumbnail ? (
                           <img src={currentPlayingRequest.thumbnail} alt={currentPlayingRequest.title} className="w-full h-full object-cover" />
@@ -910,10 +827,14 @@ export default function Dashboard() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Song Info */}
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
                         <h4 className="font-semibold text-white text-sm truncate">{currentPlayingRequest.title}</h4>
                         <p className="text-xs text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                       </div>
+
+                      {/* Controls - includes skip button */}
                       <div className="flex items-center gap-1 sm:gap-2">
                         <button onClick={togglePlayPause} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
                           {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white" />}
@@ -921,6 +842,12 @@ export default function Dashboard() {
                         <button onClick={() => setIsMuted(!isMuted)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400" : "bg-green-500/20 text-green-400"}`}>
                           {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
+                        {/* Skip button - always visible if there's a next song */}
+                        {nextSong && (
+                          <button onClick={handleSkipToNext} className="p-1.5 sm:p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all" title={`Skip to: ${nextSong.title}`}>
+                            <SkipForward size={16} />
+                          </button>
+                        )}
                         <button onClick={() => setIsMinimized(false)} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all">
                           <Maximize2 size={16} />
                         </button>
@@ -929,6 +856,16 @@ export default function Dashboard() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Up Next Preview */}
+                    {nextSong && (
+                      <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
+                        <span>Up next:</span>
+                        <span className="text-gray-300 truncate">{nextSong.title}</span>
+                        <span className="text-gray-600">by</span>
+                        <span className="text-gray-400 truncate">{nextSong.artist}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -938,7 +875,7 @@ export default function Dashboard() {
       )}
 
       {/* Main Content */}
-      <div className={`relative max-w-6xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-24 sm:pb-32" : ""}`}>
+      <div className={`relative max-w-6xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-28 sm:pb-36" : ""}`}>
         {/* Header */}
         <header className="flex items-center justify-between mb-4 sm:mb-8">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -962,25 +899,114 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Mobile DJ Info Banner */}
-        <div className="lg:hidden mb-4 p-3 rounded-xl bg-[#12121a] border border-white/5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Phone size={16} className="text-blue-400" />
-              <span className="text-sm text-gray-400">Request Line:</span>
-              {djProfile ? (
-                <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span>
-              ) : (
-                <span className="text-sm text-gray-500">Loading...</span>
-              )}
+        {/* Mobile Info Cards */}
+        <div className="lg:hidden space-y-3 mb-4">
+          {/* DJ Info Banner */}
+          <div className="p-3 rounded-xl bg-[#12121a] border border-white/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Phone size={16} className="text-blue-400" />
+                <span className="text-sm text-gray-400">Request Line:</span>
+                {djProfile ? (
+                  <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span>
+                ) : (
+                  <span className="text-sm text-gray-500">Loading...</span>
+                )}
+              </div>
+              <span className="text-xs text-green-400 font-medium">● Live</span>
             </div>
-            <span className="text-xs text-green-400 font-medium">● Live</span>
+          </div>
+
+          {/* Mobile Stats - Collapsible */}
+          <div className="rounded-xl bg-[#12121a] border border-white/5 overflow-hidden">
+            <button onClick={() => setShowMobileStats(!showMobileStats)} className="w-full p-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-300">Tonight's Stats</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-yellow-400">{stats.pending}</span>
+                  <span className="text-gray-600">/</span>
+                  <span className="text-blue-400">{stats.approved}</span>
+                  <span className="text-gray-600">/</span>
+                  <span className="text-green-400">{stats.played}</span>
+                </div>
+                {showMobileStats ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+              </div>
+            </button>
+            {showMobileStats && (
+              <div className="px-3 pb-3 pt-0 border-t border-white/5">
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <div className="flex items-center gap-2">
+                      <Circle size={8} className="fill-yellow-400 text-yellow-400" />
+                      <span className="text-xs text-gray-400">Pending</span>
+                    </div>
+                    <span className="text-sm font-semibold text-yellow-400">{stats.pending}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <div className="flex items-center gap-2">
+                      <Circle size={8} className="fill-blue-400 text-blue-400" />
+                      <span className="text-xs text-gray-400">Approved</span>
+                    </div>
+                    <span className="text-sm font-semibold text-blue-400">{stats.approved}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <div className="flex items-center gap-2">
+                      <Circle size={8} className="fill-red-400 text-red-400" />
+                      <span className="text-xs text-gray-400">Rejected</span>
+                    </div>
+                    <span className="text-sm font-semibold text-red-400">{stats.rejected}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <div className="flex items-center gap-2">
+                      <Circle size={8} className="fill-green-400 text-green-400" />
+                      <span className="text-xs text-gray-400">Played</span>
+                    </div>
+                    <span className="text-sm font-semibold text-green-400">{stats.played}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Platform Selector - Collapsible */}
+          <div className="rounded-xl bg-[#12121a] border border-white/5 overflow-hidden">
+            <button onClick={() => setShowMobilePlatforms(!showMobilePlatforms)} className="w-full p-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-300">Open Songs In</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{currentPlatform.icon}</span>
+                <span className={`text-sm ${currentPlatform.textColor}`}>{currentPlatform.name}</span>
+                {showMobilePlatforms ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+              </div>
+            </button>
+            {showMobilePlatforms && (
+              <div className="px-3 pb-3 pt-0 border-t border-white/5">
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {Object.entries(PLATFORMS).map(([key, platform]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        updatePlatformPreference(key);
+                        setShowMobilePlatforms(false);
+                      }}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition-all ${
+                        selectedPlatform === key
+                          ? `${platform.bgColor} ${platform.borderColor} border`
+                          : "bg-white/5 border border-transparent"
+                      }`}
+                    >
+                      <span className="text-lg">{platform.icon}</span>
+                      <span className={`text-xs font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-          {/* Sidebar - Hidden on mobile */}
+          {/* Sidebar - Desktop Only */}
           <div className="hidden lg:block lg:col-span-1 space-y-6">
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <div className="flex items-center gap-3 mb-4">
@@ -1058,37 +1084,51 @@ export default function Dashboard() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Tab Navigation with Arrows */}
-            <div className="flex items-center gap-1 sm:gap-2 mb-4 sm:mb-6">
-              <button onClick={() => scrollTabs("left")} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex-shrink-0 ${!canScrollLeft ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!canScrollLeft}>
-                <ChevronLeft size={18} className="text-gray-400" />
-              </button>
-
-              <div ref={tabContainerRef} onScroll={checkScrollButtons} className="flex-1 flex items-center gap-1.5 sm:gap-2 overflow-x-auto scroll-smooth" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {/* Tab Navigation - Desktop: flex-wrap, Mobile: horizontal scroll */}
+            <div className="mb-4 sm:mb-6">
+              {/* Desktop Tabs - flex wrap, no arrows */}
+              <div className="hidden sm:flex items-center gap-2 flex-wrap">
                 {TABS.map((tab) => {
                   const TabIcon = tab.icon;
                   const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
                   return (
-                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap border flex-shrink-0 ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"}`}>
-                      <TabIcon size={14} className="sm:w-4 sm:h-4" />
-                      <span>{tab.shortLabel}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
+                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap border ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"}`}>
+                      <TabIcon size={16} />
+                      <span>{tab.label}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
                     </button>
                   );
                 })}
+                {filteredRequests.length > 0 && (
+                  <button onClick={deleteAllFiltered} className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20">
+                    <Trash2 size={16} />
+                    <span>Clear All</span>
+                  </button>
+                )}
               </div>
 
-              <button onClick={() => scrollTabs("right")} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex-shrink-0 ${!canScrollRight ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!canScrollRight}>
-                <ChevronRight size={18} className="text-gray-400" />
-              </button>
-
-              {filteredRequests.length > 0 && (
-                <button onClick={deleteAllFiltered} className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0" title="Clear All">
-                  <Trash2 size={16} />
-                </button>
-              )}
+              {/* Mobile Tabs - horizontal scroll */}
+              <div className="sm:hidden flex items-center gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                {TABS.map((tab) => {
+                  const TabIcon = tab.icon;
+                  const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
+                  return (
+                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap border flex-shrink-0 ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent"}`}>
+                      <TabIcon size={14} />
+                      <span>{tab.shortLabel}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
+                    </button>
+                  );
+                })}
+                {filteredRequests.length > 0 && (
+                  <button onClick={deleteAllFiltered} className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
+            {/* Playback Tab Indicator */}
             {playbackTab && playbackTab !== filterStatus && (
               <div className="mb-4 p-2.5 sm:p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs sm:text-sm">
@@ -1103,6 +1143,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* Request List */}
             {loading ? (
               <div className="text-center py-12 sm:py-20">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
