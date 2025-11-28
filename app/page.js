@@ -24,6 +24,10 @@ import {
   SkipForward,
   Maximize2,
   Minimize2,
+  ThumbsUp,
+  Ban,
+  History,
+  Layers,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -67,6 +71,50 @@ const PLATFORMS = {
   },
 };
 
+// Tab configuration
+const TABS = [
+  {
+    key: "pending",
+    label: "Requests",
+    icon: Clock,
+    color: "yellow",
+    activeClass: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    dotClass: "fill-yellow-400 text-yellow-400",
+  },
+  {
+    key: "approved",
+    label: "Approved",
+    icon: ThumbsUp,
+    color: "blue",
+    activeClass: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    dotClass: "fill-blue-400 text-blue-400",
+  },
+  {
+    key: "rejected",
+    label: "Rejected",
+    icon: Ban,
+    color: "red",
+    activeClass: "bg-red-500/20 text-red-400 border-red-500/30",
+    dotClass: "fill-red-400 text-red-400",
+  },
+  {
+    key: "played",
+    label: "Played",
+    icon: History,
+    color: "green",
+    activeClass: "bg-green-500/20 text-green-400 border-green-500/30",
+    dotClass: "fill-green-400 text-green-400",
+  },
+  {
+    key: "all",
+    label: "All",
+    icon: Layers,
+    color: "gray",
+    activeClass: "bg-white/10 text-white border-white/20",
+    dotClass: "fill-gray-400 text-gray-400",
+  },
+];
+
 export default function Dashboard() {
   const supabase = supabaseBrowserClient();
   const router = useRouter();
@@ -76,7 +124,7 @@ export default function Dashboard() {
   const [djProfile, setDjProfile] = useState(null);
   const [user, setUser] = useState(null);
   const [profileError, setProfileError] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("pending");
+  const [filterStatus, setFilterStatus] = useState("pending"); // Current viewing tab
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
 
   // Video modal state
@@ -86,6 +134,9 @@ export default function Dashboard() {
   const [autoPlay, setAutoPlay] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
+  
+  // NEW: Track which tab's queue is currently playing (separate from viewing tab)
+  const [playbackTab, setPlaybackTab] = useState(null);
 
   // Refs for stable references
   const playerRef = useRef(null);
@@ -95,6 +146,7 @@ export default function Dashboard() {
   const currentPlayingRequestRef = useRef(currentPlayingRequest);
   const autoPlayRef = useRef(autoPlay);
   const isMutedRef = useRef(isMuted);
+  const playbackTabRef = useRef(playbackTab);
 
   // Keep refs in sync
   useEffect(() => {
@@ -113,6 +165,10 @@ export default function Dashboard() {
     isMutedRef.current = isMuted;
   }, [isMuted]);
 
+  useEffect(() => {
+    playbackTabRef.current = playbackTab;
+  }, [playbackTab]);
+
   // Helper functions
   function getPlatformUrl(request) {
     switch (selectedPlatform) {
@@ -129,27 +185,42 @@ export default function Dashboard() {
     }
   }
 
-  // Get next song using ref to avoid dependency issues
+  // Get filtered requests for a specific tab
+  const getRequestsForTab = useCallback((tab, allRequests) => {
+    if (tab === "all") return allRequests;
+    if (tab === "pending") {
+      return allRequests.filter((r) => r.status === "pending");
+    }
+    return allRequests.filter((r) => r.status === tab);
+  }, []);
+
+  // Get next song using ref to avoid dependency issues - now uses playback tab
   const getNextSongFromRef = useCallback(() => {
     const currentRequests = requestsRef.current;
     const currentPlaying = currentPlayingRequestRef.current;
+    const currentPlaybackTab = playbackTabRef.current;
 
-    const pendingReqs = currentRequests.filter(
-      (r) => r.status === "pending" || r.status === "approved"
-    );
+    if (!currentPlaybackTab) return null;
 
-    if (!currentPlaying) return pendingReqs[0] || null;
+    // Get songs from the current playback tab's queue
+    const tabRequests = getRequestsForTab(currentPlaybackTab, currentRequests);
+    
+    // Filter to only songs with YouTube video IDs
+    const playableRequests = tabRequests.filter((r) => r.youtube_video_id);
 
-    const currentIndex = pendingReqs.findIndex(
+    if (!currentPlaying) return playableRequests[0] || null;
+
+    const currentIndex = playableRequests.findIndex(
       (r) => r.id === currentPlaying.id
     );
 
-    if (currentIndex === -1 || currentIndex >= pendingReqs.length - 1) {
-      return pendingReqs.find((r) => r.id !== currentPlaying.id) || null;
+    if (currentIndex === -1 || currentIndex >= playableRequests.length - 1) {
+      // If current song not in this tab or at end, wrap to start (excluding current)
+      return playableRequests.find((r) => r.id !== currentPlaying.id) || null;
     }
 
-    return pendingReqs[currentIndex + 1] || null;
-  }, []);
+    return playableRequests[currentIndex + 1] || null;
+  }, [getRequestsForTab]);
 
   // Update status function (stable reference)
   const updateStatusDirect = useCallback(async (id, status) => {
@@ -190,11 +261,13 @@ export default function Dashboard() {
       } else {
         setVideoModal(null);
         setCurrentPlayingRequest(null);
+        setPlaybackTab(null);
         currentVideoId.current = null;
       }
     } else {
       setVideoModal(null);
       setCurrentPlayingRequest(null);
+      setPlaybackTab(null);
       currentVideoId.current = null;
     }
   }, [getNextSongFromRef, updateStatusDirect]);
@@ -210,7 +283,7 @@ export default function Dashboard() {
   }, []);
 
   // ========================
-  // FIXED YOUTUBE AUTOPLAY HOOK
+  // YOUTUBE PLAYER HOOK
   // ========================
   useEffect(() => {
     if (!videoModal) {
@@ -246,8 +319,8 @@ export default function Dashboard() {
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
         playerVars: {
-          autoplay: 1,          // 🔥 Force autoplay
-          mute: 1,              // 🔥 MUST be muted to autoplay everywhere
+          autoplay: 1,
+          mute: 1,
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
@@ -256,7 +329,7 @@ export default function Dashboard() {
           onReady: (event) => {
             playerReady.current = true;
 
-            // 🚀 Force autoplay twice (some browsers ignore first call)
+            // Force autoplay
             event.target.mute();
             event.target.playVideo();
             setTimeout(() => {
@@ -265,7 +338,7 @@ export default function Dashboard() {
 
             setIsPlaying(true);
 
-            // 🔊 Auto-unmute after playback begins if user wants sound
+            // Auto-unmute after playback begins if user wants sound
             if (!isMutedRef.current) {
               setTimeout(() => {
                 try { event.target.unMute(); } catch (e) {}
@@ -296,7 +369,6 @@ export default function Dashboard() {
     }
   }, [videoModal, handleVideoEnd]);
 
-
   // Update mute state on player
   useEffect(() => {
     if (playerRef.current && playerReady.current) {
@@ -323,12 +395,14 @@ export default function Dashboard() {
     }
   }, [isPlaying]);
 
-  function handleOpenVideo(request) {
+  // Open video - also sets the playback tab
+  function handleOpenVideo(request, fromTab) {
     if (selectedPlatform === "youtube" && request.youtube_video_id) {
       // Only change if different video
       if (currentVideoId.current !== request.youtube_video_id) {
         setCurrentPlayingRequest(request);
         setVideoModal(request.youtube_video_id);
+        setPlaybackTab(fromTab); // Set which tab's queue we're playing from
       }
       setIsMinimized(false);
     } else {
@@ -351,6 +425,7 @@ export default function Dashboard() {
     } else {
       setVideoModal(null);
       setCurrentPlayingRequest(null);
+      setPlaybackTab(null);
     }
   }
 
@@ -359,7 +434,35 @@ export default function Dashboard() {
     setVideoModal(null);
     setCurrentPlayingRequest(null);
     setIsMinimized(false);
+    setPlaybackTab(null);
     currentVideoId.current = null;
+  }
+
+  // Approve current song and continue to next
+  function handleApproveAndContinue() {
+    const currentPlaying = currentPlayingRequestRef.current;
+    if (currentPlaying) {
+      updateStatusDirect(currentPlaying.id, "approved");
+    }
+    
+    if (autoPlayRef.current) {
+      const nextSong = getNextSongFromRef();
+      if (nextSong && nextSong.youtube_video_id) {
+        setCurrentPlayingRequest(nextSong);
+        setVideoModal(nextSong.youtube_video_id);
+        currentVideoId.current = nextSong.youtube_video_id;
+      } else {
+        setVideoModal(null);
+        setCurrentPlayingRequest(null);
+        setPlaybackTab(null);
+        currentVideoId.current = null;
+      }
+    } else {
+      setVideoModal(null);
+      setCurrentPlayingRequest(null);
+      setPlaybackTab(null);
+      currentVideoId.current = null;
+    }
   }
 
   // Mark as played and close
@@ -371,6 +474,7 @@ export default function Dashboard() {
     setVideoModal(null);
     setCurrentPlayingRequest(null);
     setIsMinimized(false);
+    setPlaybackTab(null);
     currentVideoId.current = null;
   }
 
@@ -500,15 +604,11 @@ export default function Dashboard() {
 
   async function deleteAllFiltered() {
     const count = filteredRequests.length;
+    const tabLabel = TABS.find(t => t.key === filterStatus)?.label || filterStatus;
+    
     if (
       !confirm(
-        `Delete all ${count} ${
-          filterStatus === "pending"
-            ? "requests"
-            : filterStatus === "played"
-            ? "played songs"
-            : "items"
-        }? This cannot be undone.`
+        `Delete all ${count} ${tabLabel.toLowerCase()} items? This cannot be undone.`
       )
     )
       return;
@@ -560,37 +660,42 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
+  // Filter requests based on current viewing tab
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
-      return req.status === "pending" || req.status === "approved";
+      return req.status === "pending";
     }
     return req.status === filterStatus;
   });
 
-  const pendingRequests = requests.filter(
-    (r) => r.status === "pending" || r.status === "approved"
-  );
-
+  // Stats for each tab
   const stats = {
     total: requests.length,
-    requests: pendingRequests.length,
+    pending: requests.filter((r) => r.status === "pending").length,
+    approved: requests.filter((r) => r.status === "approved").length,
+    rejected: requests.filter((r) => r.status === "rejected").length,
     played: requests.filter((r) => r.status === "played").length,
   };
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
+  // Get next song for the current playback tab
   const nextSong = (() => {
-    if (!currentPlayingRequest) return pendingRequests[0] || null;
-    const currentIndex = pendingRequests.findIndex(
+    if (!playbackTab || !currentPlayingRequest) return null;
+    
+    const tabRequests = getRequestsForTab(playbackTab, requests)
+      .filter((r) => r.youtube_video_id);
+    
+    const currentIndex = tabRequests.findIndex(
       (r) => r.id === currentPlayingRequest.id
     );
-    if (currentIndex === -1 || currentIndex >= pendingRequests.length - 1) {
-      return (
-        pendingRequests.find((r) => r.id !== currentPlayingRequest.id) || null
-      );
+    
+    if (currentIndex === -1 || currentIndex >= tabRequests.length - 1) {
+      return tabRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
     }
-    return pendingRequests[currentIndex + 1] || null;
+    
+    return tabRequests[currentIndex + 1] || null;
   })();
 
   return (
@@ -601,12 +706,7 @@ export default function Dashboard() {
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* 
-        PERSISTENT PLAYER SYSTEM
-        The player container is ALWAYS in the same place in the DOM.
-        We only change its visual presentation via CSS classes.
-        This prevents the iframe from being destroyed when toggling modes.
-      */}
+      {/* PERSISTENT PLAYER SYSTEM */}
       {videoModal && (
         <>
           {/* Backdrop - only visible when NOT minimized */}
@@ -619,10 +719,7 @@ export default function Dashboard() {
             onClick={() => setIsMinimized(true)}
           />
 
-          {/* 
-            SINGLE PERSISTENT PLAYER WRAPPER
-            This wrapper changes position/size but the player inside never remounts
-          */}
+          {/* SINGLE PERSISTENT PLAYER WRAPPER */}
           <div
             className={`fixed z-50 transition-all duration-300 ease-out ${
               isMinimized
@@ -644,15 +741,21 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
-                        <Play
-                          size={18}
-                          className="text-pink-400 fill-pink-400"
-                        />
+                        <Play size={18} className="text-pink-400 fill-pink-400" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">
-                          Now Playing
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Now Playing
+                          </p>
+                          {playbackTab && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              TABS.find(t => t.key === playbackTab)?.activeClass || 'bg-white/10'
+                            }`}>
+                              from {TABS.find(t => t.key === playbackTab)?.label}
+                            </span>
+                          )}
+                        </div>
                         <h3 className="font-semibold text-white truncate">
                           {currentPlayingRequest.title}
                         </h3>
@@ -673,10 +776,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* 
-                THE ACTUAL YOUTUBE PLAYER
-                This div NEVER gets removed from DOM - only resized via CSS
-              */}
+              {/* THE ACTUAL YOUTUBE PLAYER */}
               <div
                 className={`bg-black transition-all duration-300 ${
                   isMinimized ? "h-0 overflow-hidden" : "aspect-video"
@@ -741,6 +841,16 @@ export default function Dashboard() {
                         </span>
                       </button>
                     )}
+
+                    <button
+                      onClick={handleApproveAndContinue}
+                      className="px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all flex items-center gap-2"
+                    >
+                      <ThumbsUp size={16} />
+                      <span className="text-sm font-medium hidden sm:inline">
+                        Approve
+                      </span>
+                    </button>
 
                     <button
                       onClick={handleMarkPlayedAndClose}
@@ -817,9 +927,18 @@ export default function Dashboard() {
                         className="flex-1 min-w-0 cursor-pointer"
                         onClick={() => setIsMinimized(false)}
                       >
-                        <h4 className="font-semibold text-white text-sm truncate">
-                          {currentPlayingRequest.title}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-white text-sm truncate">
+                            {currentPlayingRequest.title}
+                          </h4>
+                          {playbackTab && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                              TABS.find(t => t.key === playbackTab)?.activeClass || 'bg-white/10'
+                            }`}>
+                              {TABS.find(t => t.key === playbackTab)?.label}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-400 truncate">
                           {currentPlayingRequest.artist}
                         </p>
@@ -848,11 +967,7 @@ export default function Dashboard() {
                           }`}
                           title={isMuted ? "Unmute" : "Mute"}
                         >
-                          {isMuted ? (
-                            <VolumeX size={18} />
-                          ) : (
-                            <Volume2 size={18} />
-                          )}
+                          {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                         </button>
 
                         {nextSong && (
@@ -866,11 +981,11 @@ export default function Dashboard() {
                         )}
 
                         <button
-                          onClick={handleMarkPlayedAndClose}
-                          className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-all"
-                          title="Mark as Played & Close"
+                          onClick={handleApproveAndContinue}
+                          className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 transition-all"
+                          title="Approve & Continue"
                         >
-                          <Check size={18} />
+                          <ThumbsUp size={18} />
                         </button>
 
                         <button
@@ -1034,22 +1149,34 @@ export default function Dashboard() {
                 <div className="h-px bg-white/5" />
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle
-                      size={8}
-                      className="fill-yellow-400 text-yellow-400"
-                    />
-                    <span className="text-gray-400 text-sm">Requests</span>
+                    <Circle size={8} className="fill-yellow-400 text-yellow-400" />
+                    <span className="text-gray-400 text-sm">Pending</span>
                   </div>
                   <span className="text-yellow-400 font-semibold">
-                    {stats.requests}
+                    {stats.pending}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Circle
-                      size={8}
-                      className="fill-green-400 text-green-400"
-                    />
+                    <Circle size={8} className="fill-blue-400 text-blue-400" />
+                    <span className="text-gray-400 text-sm">Approved</span>
+                  </div>
+                  <span className="text-blue-400 font-semibold">
+                    {stats.approved}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Circle size={8} className="fill-red-400 text-red-400" />
+                    <span className="text-gray-400 text-sm">Rejected</span>
+                  </div>
+                  <span className="text-red-400 font-semibold">
+                    {stats.rejected}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Circle size={8} className="fill-green-400 text-green-400" />
                     <span className="text-gray-400 text-sm">Played</span>
                   </div>
                   <span className="text-green-400 font-semibold">
@@ -1064,94 +1191,107 @@ export default function Dashboard() {
           <div className="lg:col-span-3">
             {/* Filter Tabs */}
             <div className="flex items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                {[
-                  {
-                    key: "pending",
-                    label: "Requests",
-                    count: stats.requests,
-                    color: "yellow",
-                  },
-                  {
-                    key: "played",
-                    label: "Played",
-                    count: stats.played,
-                    color: "green",
-                  },
-                  {
-                    key: "all",
-                    label: "All",
-                    count: stats.total,
-                    color: "gray",
-                  },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setFilterStatus(tab.key)}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                      filterStatus === tab.key
-                        ? tab.color === "yellow"
-                          ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                          : tab.color === "green"
-                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                          : "bg-white/10 text-white border border-white/20"
-                        : "bg-white/5 text-gray-400 border border-transparent hover:bg-white/10"
-                    }`}
-                  >
-                    {tab.label}
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-xs ${
-                        filterStatus === tab.key ? "bg-white/20" : "bg-white/10"
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {TABS.map((tab) => {
+                  const TabIcon = tab.icon;
+                  const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
+                  
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setFilterStatus(tab.key)}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap border ${
+                        filterStatus === tab.key
+                          ? tab.activeClass
+                          : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"
                       }`}
                     >
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
+                      <TabIcon size={16} />
+                      <span>{tab.label}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-xs ${
+                        filterStatus === tab.key
+                          ? "bg-white/20"
+                          : "bg-white/10"
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {filteredRequests.length > 0 && (
                 <button
                   onClick={deleteAllFiltered}
-                  className="flex-shrink-0 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all text-sm font-medium flex items-center gap-2"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 whitespace-nowrap"
                 >
                   <Trash2 size={16} />
                   <span className="hidden sm:inline">Clear All</span>
-                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-xs">
-                    {filteredRequests.length}
-                  </span>
                 </button>
               )}
             </div>
 
+            {/* Playback Tab Indicator */}
+            {playbackTab && playbackTab !== filterStatus && (
+              <div className="mb-4 p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="flex gap-0.5">
+                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
+                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
+                    <div className="w-1 h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-pink-400">
+                    Playing from <strong>{TABS.find(t => t.key === playbackTab)?.label}</strong> tab
+                  </span>
+                </div>
+                <button
+                  onClick={() => setFilterStatus(playbackTab)}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 transition-all"
+                >
+                  Go to queue
+                </button>
+              </div>
+            )}
+
             {/* Request List */}
             {loading ? (
-              <div className="flex items-center justify-center py-32">
-                <div className="w-12 h-12 border-3 border-white/10 border-t-pink-500 rounded-full animate-spin" />
+              <div className="text-center py-20">
+                <div className="w-12 h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-gray-500">Loading requests...</p>
               </div>
             ) : filteredRequests.length === 0 ? (
-              <div className="text-center py-20 px-4">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
-                  <ListMusic size={28} className="text-gray-600" />
+              <div className="text-center py-20">
+                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <ListMusic size={32} className="text-gray-600" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-400 mb-1">
-                  {filterStatus === "pending"
-                    ? "No requests yet"
-                    : filterStatus === "played"
-                    ? "No songs played yet"
-                    : "No requests yet"}
+                <h3 className="text-lg font-semibold text-gray-400 mb-2">
+                  No {TABS.find(t => t.key === filterStatus)?.label.toLowerCase() || filterStatus} yet
                 </h3>
-                <p className="text-sm text-gray-600">
-                  Requests will appear here when people text your number
+                <p className="text-gray-600 text-sm">
+                  {filterStatus === "pending"
+                    ? "Waiting for song requests to come in..."
+                    : filterStatus === "approved"
+                    ? "Approve requests to see them here"
+                    : filterStatus === "rejected"
+                    ? "Rejected requests will appear here"
+                    : filterStatus === "played"
+                    ? "Played songs will appear here"
+                    : "No requests yet"}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredRequests.map((req, index) => {
                   const hasUrl = getPlatformUrl(req);
-                  const isPlayed = req.status === "played";
                   const isCurrentlyPlaying =
+                    videoModal &&
                     currentPlayingRequest?.id === req.id;
+
+                  // Determine action buttons based on status
+                  const isPending = req.status === "pending";
+                  const isApproved = req.status === "approved";
+                  const isRejected = req.status === "rejected";
+                  const isPlayed = req.status === "played";
 
                   return (
                     <div
@@ -1183,13 +1323,10 @@ export default function Dashboard() {
                           )}
                           {hasUrl && !isCurrentlyPlaying && (
                             <button
-                              onClick={() => handleOpenVideo(req)}
+                              onClick={() => handleOpenVideo(req, filterStatus)}
                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                             >
-                              <Play
-                                size={24}
-                                className="text-white fill-white"
-                              />
+                              <Play size={24} className="text-white fill-white" />
                             </button>
                           )}
                           {isCurrentlyPlaying && (
@@ -1220,7 +1357,7 @@ export default function Dashboard() {
                             <div className="min-w-0 flex-1 overflow-hidden">
                               {hasUrl ? (
                                 <button
-                                  onClick={() => handleOpenVideo(req)}
+                                  onClick={() => handleOpenVideo(req, filterStatus)}
                                   className="block w-full text-left group/title"
                                 >
                                   <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">
@@ -1241,12 +1378,17 @@ export default function Dashboard() {
                               </p>
                             </div>
 
+                            {/* Status Badge */}
                             <span
                               className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${
                                 isCurrentlyPlaying
                                   ? "bg-pink-500/20 text-pink-400"
                                   : isPlayed
                                   ? "bg-green-500/10 text-green-400"
+                                  : isApproved
+                                  ? "bg-blue-500/10 text-blue-400"
+                                  : isRejected
+                                  ? "bg-red-500/10 text-red-400"
                                   : "bg-yellow-500/10 text-yellow-400"
                               }`}
                             >
@@ -1254,7 +1396,11 @@ export default function Dashboard() {
                                 ? "Playing"
                                 : isPlayed
                                 ? "Played"
-                                : "Request"}
+                                : isApproved
+                                ? "Approved"
+                                : isRejected
+                                ? "Rejected"
+                                : "Pending"}
                             </span>
                           </div>
 
@@ -1273,9 +1419,7 @@ export default function Dashboard() {
                                       : "bg-green-500/10 text-green-400 border-green-500/20"
                                   }`}
                                 >
-                                  {req.explicit === "Explicit"
-                                    ? "Explicit"
-                                    : "Clean"}
+                                  {req.explicit === "Explicit" ? "Explicit" : "Clean"}
                                 </span>
                               )}
                             </div>
@@ -1293,21 +1437,40 @@ export default function Dashboard() {
                           </div>
                         </div>
 
+                        {/* Action Buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {hasUrl && (
                             <button
-                              onClick={() => handleOpenVideo(req)}
+                              onClick={() => handleOpenVideo(req, filterStatus)}
                               className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
                               title={`Preview on ${currentPlatform.name}`}
                             >
-                              <ExternalLink
-                                size={16}
-                                className="text-gray-400"
-                              />
+                              <ExternalLink size={16} className="text-gray-400" />
                             </button>
                           )}
 
-                          {!isPlayed ? (
+                          {/* Pending: Approve and Reject */}
+                          {isPending && (
+                            <>
+                              <button
+                                onClick={() => updateStatus(req.id, "approved")}
+                                className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
+                                title="Approve"
+                              >
+                                <ThumbsUp size={16} className="text-blue-400" />
+                              </button>
+                              <button
+                                onClick={() => updateStatus(req.id, "rejected")}
+                                className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all"
+                                title="Reject"
+                              >
+                                <Ban size={16} className="text-red-400" />
+                              </button>
+                            </>
+                          )}
+
+                          {/* Approved: Mark as Played and Reject */}
+                          {isApproved && (
                             <>
                               <button
                                 onClick={() => updateStatus(req.id, "played")}
@@ -1317,24 +1480,53 @@ export default function Dashboard() {
                                 <Check size={16} className="text-green-400" />
                               </button>
                               <button
-                                onClick={() => deleteRequest(req.id)}
+                                onClick={() => updateStatus(req.id, "rejected")}
                                 className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all"
                                 title="Reject"
                               >
-                                <X size={16} className="text-red-400" />
+                                <Ban size={16} className="text-red-400" />
                               </button>
                             </>
-                          ) : (
-                            <button
-                              onClick={() => deleteRequest(req.id)}
-                              className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
-                              title="Remove"
-                            >
-                              <Trash2
-                                size={16}
-                                className="text-gray-500 hover:text-red-400"
-                              />
-                            </button>
+                          )}
+
+                          {/* Rejected: Restore to Pending and Delete */}
+                          {isRejected && (
+                            <>
+                              <button
+                                onClick={() => updateStatus(req.id, "pending")}
+                                className="p-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all"
+                                title="Restore to Pending"
+                              >
+                                <Clock size={16} className="text-yellow-400" />
+                              </button>
+                              <button
+                                onClick={() => deleteRequest(req.id)}
+                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
+                                title="Delete"
+                              >
+                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
+                              </button>
+                            </>
+                          )}
+
+                          {/* Played: Replay (move to approved) and Delete */}
+                          {isPlayed && (
+                            <>
+                              <button
+                                onClick={() => updateStatus(req.id, "approved")}
+                                className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
+                                title="Move to Approved"
+                              >
+                                <ThumbsUp size={16} className="text-blue-400" />
+                              </button>
+                              <button
+                                onClick={() => deleteRequest(req.id)}
+                                className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all"
+                                title="Delete"
+                              >
+                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
