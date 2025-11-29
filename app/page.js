@@ -29,6 +29,20 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  Settings,
+  Power,
+  PowerOff,
+  UserX,
+  MusicOff,
+  Copy,
+  Shield,
+  Zap,
+  BarChart3,
+  MessageSquare,
+  CreditCard,
+  Palette,
+  Link,
+  Crown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -146,7 +160,45 @@ export default function Dashboard() {
   const [showMobileStats, setShowMobileStats] = useState(false);
   const [showMobilePlatforms, setShowMobilePlatforms] = useState(false);
 
-  // Refs for stable references - CRITICAL for avoiding stale closures
+  // ============ NEW ROADMAP FEATURES STATE ============
+  
+  // Accepting Requests Toggle
+  const [acceptingRequests, setAcceptingRequests] = useState(true);
+  
+  // Settings Modal
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("general");
+  
+  // DJ Tag / Branding
+  const [djTag, setDjTag] = useState("");
+  const [tagCopied, setTagCopied] = useState(false);
+  
+  // Ban lists (will be populated from Supabase later)
+  const [bannedPhones, setBannedPhones] = useState([]);
+  const [bannedSongs, setBannedSongs] = useState([]);
+  
+  // Auto-DJ Rules (placeholder)
+  const [autoDjRules, setAutoDjRules] = useState({
+    autoRejectExplicit: false,
+    autoRejectGenres: [],
+    maxRequestsPerPhone: 0,
+    cooldownMinutes: 0,
+  });
+  
+  // Video Preferences
+  const [preferOfficialVideos, setPreferOfficialVideos] = useState(true);
+  
+  // Account/Plan Info (placeholder)
+  const [accountPlan, setAccountPlan] = useState({
+    tier: "free",
+    requestsThisMonth: 0,
+    requestLimit: 100,
+    trialEndsAt: null,
+  });
+
+  // ============ END NEW FEATURES STATE ============
+
+  // Refs for stable references
   const playerRef = useRef(null);
   const playerReady = useRef(false);
   const currentVideoId = useRef(null);
@@ -159,47 +211,72 @@ export default function Dashboard() {
   const isTransitioning = useRef(false);
 
   // Keep refs in sync
-  useEffect(() => {
-    requestsRef.current = requests;
-  }, [requests]);
+  useEffect(() => { requestsRef.current = requests; }, [requests]);
+  useEffect(() => { currentPlayingRequestRef.current = currentPlayingRequest; }, [currentPlayingRequest]);
+  useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { playbackTabRef.current = playbackTab; }, [playbackTab]);
 
-  useEffect(() => {
-    currentPlayingRequestRef.current = currentPlayingRequest;
-  }, [currentPlayingRequest]);
+  // ============ NEW ROADMAP FEATURE FUNCTIONS ============
 
-  useEffect(() => {
-    autoPlayRef.current = autoPlay;
-  }, [autoPlay]);
+  async function toggleAcceptingRequests() {
+    const newValue = !acceptingRequests;
+    setAcceptingRequests(newValue);
+    
+    if (user) {
+      try {
+        await supabase
+          .from("dj_profiles")
+          .update({ accepting_requests: newValue })
+          .eq("id", user.id);
+      } catch (err) {
+        console.error("Error updating accepting_requests:", err);
+        setAcceptingRequests(!newValue);
+      }
+    }
+  }
 
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
+  function copyDjTag() {
+    const tag = `Text ${djProfile?.dj_name || "your DJ"} at ${formatPhoneNumber(djProfile?.twilio_number)}`;
+    navigator.clipboard.writeText(tag);
+    setTagCopied(true);
+    setTimeout(() => setTagCopied(false), 2000);
+  }
 
-  useEffect(() => {
-    playbackTabRef.current = playbackTab;
-  }, [playbackTab]);
+  async function banPhoneNumber(phoneNumber, requestId) {
+    if (!confirm(`Ban this phone number? They won't be able to send requests anymore.`)) return;
+    setBannedPhones(prev => [...prev, phoneNumber]);
+    await updateStatusDirect(requestId, "rejected");
+    // TODO: API call to persist ban
+  }
 
-  // Helper functions
+  async function banSong(title, artist, requestId) {
+    if (!confirm(`Ban "${title}" by ${artist}? This song won't be requestable anymore.`)) return;
+    setBannedSongs(prev => [...prev, { title, artist }]);
+    await updateStatusDirect(requestId, "rejected");
+    // TODO: API call to persist ban
+  }
+
+  function updateAutoDjRule(rule, value) {
+    setAutoDjRules(prev => ({ ...prev, [rule]: value }));
+    // TODO: Save to Supabase
+  }
+
+  // ============ END NEW FEATURE FUNCTIONS ============
+
   function getPlatformUrl(request) {
     switch (selectedPlatform) {
-      case "youtube":
-        return request.youtube_url || request.url || null;
-      case "spotify":
-        return request.spotify_url || null;
-      case "apple":
-        return request.apple_url || null;
-      case "soundcloud":
-        return request.soundcloud_url || null;
-      default:
-        return request.youtube_url || request.url || null;
+      case "youtube": return request.youtube_url || request.url || null;
+      case "spotify": return request.spotify_url || null;
+      case "apple": return request.apple_url || null;
+      case "soundcloud": return request.soundcloud_url || null;
+      default: return request.youtube_url || request.url || null;
     }
   }
 
   const getRequestsForTab = useCallback((tab, allRequests) => {
     if (tab === "all") return allRequests;
-    if (tab === "pending") {
-      return allRequests.filter((r) => r.status === "pending");
-    }
+    if (tab === "pending") return allRequests.filter((r) => r.status === "pending");
     return allRequests.filter((r) => r.status === tab);
   }, []);
 
@@ -207,22 +284,14 @@ export default function Dashboard() {
     const currentRequests = requestsRef.current;
     const currentPlaying = currentPlayingRequestRef.current;
     const currentPlaybackTab = playbackTabRef.current;
-
     if (!currentPlaybackTab) return null;
-
     const tabRequests = getRequestsForTab(currentPlaybackTab, currentRequests);
     const playableRequests = tabRequests.filter((r) => r.youtube_video_id);
-
     if (!currentPlaying) return playableRequests[0] || null;
-
-    const currentIndex = playableRequests.findIndex(
-      (r) => r.id === currentPlaying.id
-    );
-
+    const currentIndex = playableRequests.findIndex((r) => r.id === currentPlaying.id);
     if (currentIndex === -1 || currentIndex >= playableRequests.length - 1) {
       return playableRequests.find((r) => r.id !== currentPlaying.id) || null;
     }
-
     return playableRequests[currentIndex + 1] || null;
   }, [getRequestsForTab]);
 
@@ -235,9 +304,7 @@ export default function Dashboard() {
       });
       const result = await res.json();
       if (result.success) {
-        setRequests((prev) =>
-          prev.map((req) => (req.id === id ? { ...req, status } : req))
-        );
+        setRequests((prev) => prev.map((req) => (req.id === id ? { ...req, status } : req)));
         return true;
       }
       return false;
@@ -247,28 +314,17 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Play next song - this is the core function for autoplay
   const playNextSong = useCallback(() => {
-    // Prevent multiple rapid calls
     if (isTransitioning.current) return;
     isTransitioning.current = true;
-
     const currentPlaying = currentPlayingRequestRef.current;
-    
-    // Mark current as played
-    if (currentPlaying) {
-      updateStatusDirect(currentPlaying.id, "played");
-    }
-
+    if (currentPlaying) updateStatusDirect(currentPlaying.id, "played");
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
       if (nextSong && nextSong.youtube_video_id) {
-        // Small delay to ensure state updates properly
         setTimeout(() => {
           setCurrentPlayingRequest(nextSong);
           setVideoModal(nextSong.youtube_video_id);
-          // Don't set currentVideoId.current here - let the useEffect handle it
-          // Setting it here causes the useEffect to skip because it thinks the video is already playing
           isTransitioning.current = false;
         }, 100);
       } else {
@@ -287,12 +343,8 @@ export default function Dashboard() {
     }
   }, [getNextSongFromRef, updateStatusDirect]);
 
-  // Keep handleVideoEndRef updated with latest playNextSong
-  useEffect(() => {
-    handleVideoEndRef.current = playNextSong;
-  }, [playNextSong]);
+  useEffect(() => { handleVideoEndRef.current = playNextSong; }, [playNextSong]);
 
-  // Load YouTube IFrame API
   useEffect(() => {
     if (typeof window !== "undefined" && !window.YT) {
       const tag = document.createElement("script");
@@ -302,201 +354,89 @@ export default function Dashboard() {
     }
   }, []);
 
-  // YouTube Player Hook - FIXED: Handle player reuse correctly
   useEffect(() => {
-    // Cleanup when modal closes
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
-
       if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch (e) {}
+        try { playerRef.current.destroy(); } catch (e) {}
         playerRef.current = null;
       }
       return;
     }
-
-    // Skip if same video already playing
-    if (currentVideoId.current === videoModal && playerRef.current && playerReady.current) {
-      return;
-    }
-
-    // If player already exists and is ready, just load the new video
-    // Do this BEFORE creating isCancelled to avoid cleanup interference
+    if (currentVideoId.current === videoModal && playerRef.current && playerReady.current) return;
     if (playerRef.current && playerReady.current) {
       currentVideoId.current = videoModal;
       try {
-        playerRef.current.loadVideoById({
-          videoId: videoModal,
-          startSeconds: 0,
-        });
-        
-        // Retry playVideo multiple times to ensure it starts
+        playerRef.current.loadVideoById({ videoId: videoModal, startSeconds: 0 });
         const forcePlay = (attempts = 0) => {
           if (attempts > 5 || !playerRef.current || currentVideoId.current !== videoModal) return;
           try {
             const state = playerRef.current.getPlayerState();
-            // If not playing (1) or buffering (3), try to play
-            if (state !== 1 && state !== 3) {
-              playerRef.current.playVideo();
-            }
+            if (state !== 1 && state !== 3) playerRef.current.playVideo();
           } catch (e) {}
           setTimeout(() => forcePlay(attempts + 1), 200 * (attempts + 1));
         };
-        
         setTimeout(() => forcePlay(0), 100);
         setIsPlaying(true);
       } catch (e) {
         console.error("Error loading video:", e);
-        // Reset player state to force recreation
         playerReady.current = false;
       }
-      // Return without creating isCancelled - existing event handlers should continue working
       return;
     }
-
-    // For new player creation, use isCancelled to prevent stale callbacks
     let timeoutId;
     let isCancelled = false;
-
     const initPlayer = () => {
       if (isCancelled) return;
-
-      // Destroy existing player if it exists but isn't ready
       if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch (e) {}
+        try { playerRef.current.destroy(); } catch (e) {}
         playerRef.current = null;
         playerReady.current = false;
       }
-
       const container = document.getElementById("youtube-player");
-      if (!container) {
-        // Retry if container not found yet
-        timeoutId = setTimeout(initPlayer, 100);
-        return;
-      }
-
+      if (!container) { timeoutId = setTimeout(initPlayer, 100); return; }
       currentVideoId.current = videoModal;
-
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
-        playerVars: {
-          autoplay: 1,
-          mute: 1,
-          playsinline: 1,
-          rel: 0,
-          modestbranding: 1,
-          iv_load_policy: 3,
-          fs: 1,
-          controls: 1,
-          origin: typeof window !== "undefined" ? window.location.origin : undefined,
-        },
+        playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, fs: 1, controls: 1, origin: typeof window !== "undefined" ? window.location.origin : undefined },
         events: {
           onReady: (event) => {
             if (isCancelled) return;
             playerReady.current = true;
-            
-            // Force play the video
-            try {
-              event.target.mute(); // Ensure muted for autoplay policy
-              event.target.playVideo();
-            } catch (e) {
-              console.error("Error starting playback:", e);
-            }
+            try { event.target.mute(); event.target.playVideo(); } catch (e) {}
             setIsPlaying(true);
-
-            // Unmute after a short delay if user preference is unmuted
             if (!isMutedRef.current) {
-              setTimeout(() => {
-                if (isCancelled) return;
-                try {
-                  event.target.unMute();
-                } catch (e) {}
-              }, 500);
+              setTimeout(() => { if (isCancelled) return; try { event.target.unMute(); } catch (e) {} }, 500);
             }
           },
-
           onStateChange: (event) => {
-            // Don't check isCancelled here - we want this to work even when reusing player
-            // ENDED = 0
-            if (event.data === 0) {
-              console.log("Video ended - triggering next song");
-              // Use ref to always get latest function
-              if (handleVideoEndRef.current) {
-                handleVideoEndRef.current();
-              }
-            } else if (event.data === 1) { // PLAYING
-              setIsPlaying(true);
-            } else if (event.data === 2) { // PAUSED
-              setIsPlaying(false);
-            } else if (event.data === -1) { // UNSTARTED
-              // Video failed to autoplay, try again
-              try {
-                event.target.playVideo();
-              } catch (e) {}
-            }
+            if (event.data === 0) { if (handleVideoEndRef.current) handleVideoEndRef.current(); }
+            else if (event.data === 1) setIsPlaying(true);
+            else if (event.data === 2) setIsPlaying(false);
+            else if (event.data === -1) { try { event.target.playVideo(); } catch (e) {} }
           },
-
           onError: (event) => {
             if (isCancelled) return;
-            console.error("YouTube player error:", event.data);
-            // Skip to next on error
-            setTimeout(() => {
-              if (!isCancelled && handleVideoEndRef.current) {
-                handleVideoEndRef.current();
-              }
-            }, 1000);
+            setTimeout(() => { if (!isCancelled && handleVideoEndRef.current) handleVideoEndRef.current(); }, 1000);
           },
         },
       });
     };
+    if (window.YT && window.YT.Player) timeoutId = setTimeout(initPlayer, 100);
+    else window.onYouTubeIframeAPIReady = () => { if (!isCancelled) timeoutId = setTimeout(initPlayer, 100); };
+    return () => { isCancelled = true; if (timeoutId) clearTimeout(timeoutId); };
+  }, [videoModal]);
 
-    // Wait for YT API
-    if (window.YT && window.YT.Player) {
-      timeoutId = setTimeout(initPlayer, 100);
-    } else {
-      window.onYouTubeIframeAPIReady = () => {
-        if (!isCancelled) {
-          timeoutId = setTimeout(initPlayer, 100);
-        }
-      };
-    }
-
-    // Cleanup function - only affects new player creation path
-    return () => {
-      isCancelled = true;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [videoModal]); // Only depend on videoModal
-
-  // Update mute state
   useEffect(() => {
     if (playerRef.current && playerReady.current) {
-      try {
-        if (isMuted) {
-          playerRef.current.mute();
-        } else {
-          playerRef.current.unMute();
-        }
-      } catch (e) {}
+      try { if (isMuted) playerRef.current.mute(); else playerRef.current.unMute(); } catch (e) {}
     }
   }, [isMuted]);
 
   const togglePlayPause = useCallback(() => {
     if (playerRef.current && playerReady.current) {
-      try {
-        if (isPlaying) {
-          playerRef.current.pauseVideo();
-        } else {
-          playerRef.current.playVideo();
-        }
-      } catch (e) {}
+      try { if (isPlaying) playerRef.current.pauseVideo(); else playerRef.current.playVideo(); } catch (e) {}
     }
   }, [isPlaying]);
 
@@ -514,92 +454,46 @@ export default function Dashboard() {
     }
   }
 
-  function handleSkipToNext() {
-    playNextSong();
-  }
-
-  function handleCloseModal() {
-    setVideoModal(null);
-    setCurrentPlayingRequest(null);
-    setIsMinimized(false);
-    setPlaybackTab(null);
-    currentVideoId.current = null;
-    isTransitioning.current = false;
-  }
-
+  function handleSkipToNext() { playNextSong(); }
+  function handleCloseModal() { setVideoModal(null); setCurrentPlayingRequest(null); setIsMinimized(false); setPlaybackTab(null); currentVideoId.current = null; isTransitioning.current = false; }
   function handleApproveAndContinue() {
     const currentPlaying = currentPlayingRequestRef.current;
-    if (currentPlaying) {
-      updateStatusDirect(currentPlaying.id, "approved");
-    }
-
+    if (currentPlaying) updateStatusDirect(currentPlaying.id, "approved");
     if (autoPlayRef.current) {
       const nextSong = getNextSongFromRef();
-      if (nextSong && nextSong.youtube_video_id) {
-        setTimeout(() => {
-          setCurrentPlayingRequest(nextSong);
-          setVideoModal(nextSong.youtube_video_id);
-          // Don't set currentVideoId.current here - let the useEffect handle it
-        }, 100);
-      } else {
-        handleCloseModal();
-      }
-    } else {
-      handleCloseModal();
-    }
+      if (nextSong && nextSong.youtube_video_id) setTimeout(() => { setCurrentPlayingRequest(nextSong); setVideoModal(nextSong.youtube_video_id); }, 100);
+      else handleCloseModal();
+    } else handleCloseModal();
   }
-
   function handleMarkPlayedAndClose() {
     const currentPlaying = currentPlayingRequestRef.current;
-    if (currentPlaying) {
-      updateStatusDirect(currentPlaying.id, "played");
-    }
+    if (currentPlaying) updateStatusDirect(currentPlaying.id, "played");
     handleCloseModal();
   }
 
-  // Data fetching
   async function fetchDjProfile(userId) {
     try {
       let data;
-      const result1 = await supabase
-        .from("dj_profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-
+      const result1 = await supabase.from("dj_profiles").select("*").eq("id", userId).maybeSingle();
       if (result1.data) data = result1.data;
       else {
-        const result2 = await supabase
-          .from("dj_profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .maybeSingle();
-
+        const result2 = await supabase.from("dj_profiles").select("*").eq("user_id", userId).maybeSingle();
         if (result2.data) data = result2.data;
         else {
           const { data: userObj } = await supabase.auth.getUser();
           if (userObj?.user?.email) {
-            const result3 = await supabase
-              .from("dj_profiles")
-              .select("*")
-              .eq("email", userObj.user.email)
-              .maybeSingle();
+            const result3 = await supabase.from("dj_profiles").select("*").eq("email", userObj.user.email).maybeSingle();
             data = result3.data;
           }
         }
       }
-
       if (data) {
         setDjProfile(data);
-        if (data.preferred_platform) {
-          setSelectedPlatform(data.preferred_platform);
-        }
-      } else {
-        setProfileError("DJ profile not found");
-      }
-    } catch (err) {
-      setProfileError("Error loading profile");
-    }
+        if (data.preferred_platform) setSelectedPlatform(data.preferred_platform);
+        if (typeof data.accepting_requests === "boolean") setAcceptingRequests(data.accepting_requests);
+        if (data.dj_name) setDjTag(data.dj_name);
+      } else setProfileError("DJ profile not found");
+    } catch (err) { setProfileError("Error loading profile"); }
   }
 
   async function fetchRequests(djId) {
@@ -608,113 +502,54 @@ export default function Dashboard() {
       const res = await fetch(`/api/requests?dj_id=${djId}`);
       const json = await res.json();
       setRequests(json.requests || []);
-    } catch (err) {
-      console.error("Error loading requests", err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error("Error loading requests", err); }
+    finally { setLoading(false); }
   }
 
   async function updatePlatformPreference(platform) {
     setSelectedPlatform(platform);
-    if (user) {
-      await supabase
-        .from("dj_profiles")
-        .update({ preferred_platform: platform })
-        .eq("id", user.id);
-    }
+    if (user) await supabase.from("dj_profiles").update({ preferred_platform: platform }).eq("id", user.id);
   }
 
   useEffect(() => {
     async function getUser() {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-        fetchDjProfile(data.user.id);
-        fetchRequests(data.user.id);
-      } else {
-        router.push("/login");
-      }
+      if (data?.user) { setUser(data.user); fetchDjProfile(data.user.id); fetchRequests(data.user.id); }
+      else router.push("/login");
     }
     getUser();
   }, [router, supabase]);
 
   useEffect(() => {
     if (!user) return;
-    const channel = supabase
-      .channel("realtime-requests")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "requests" },
-        () => {
-          fetchRequests(user.id);
-        }
-      )
-      .subscribe();
+    const channel = supabase.channel("realtime-requests").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => { fetchRequests(user.id); }).subscribe();
     return () => supabase.removeChannel(channel);
   }, [user, supabase]);
 
-  async function updateStatus(id, status) {
-    const success = await updateStatusDirect(id, status);
-    if (!success) {
-      alert("Failed to update status. Please try again.");
-    }
-  }
-
+  async function updateStatus(id, status) { const success = await updateStatusDirect(id, status); if (!success) alert("Failed to update status."); }
   async function deleteRequest(id) {
     if (!confirm("Remove this request?")) return;
     try {
-      const res = await fetch("/api/requests-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
+      const res = await fetch("/api/requests-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
       const result = await res.json();
-      if (result.success) {
-        setRequests((prev) => prev.filter((req) => req.id !== id));
-      } else {
-        alert("Failed to delete request");
-      }
-    } catch (err) {
-      console.error("Error deleting request:", err);
-      alert("Error deleting request. Please try again.");
-    }
+      if (result.success) setRequests((prev) => prev.filter((req) => req.id !== id));
+      else alert("Failed to delete request");
+    } catch (err) { alert("Error deleting request."); }
   }
-
   async function deleteAllFiltered() {
     const count = filteredRequests.length;
     const tabLabel = TABS.find((t) => t.key === filterStatus)?.label || filterStatus;
-
-    if (!confirm(`Delete all ${count} ${tabLabel.toLowerCase()} items? This cannot be undone.`)) return;
-
+    if (!confirm(`Delete all ${count} ${tabLabel.toLowerCase()} items?`)) return;
     try {
-      const deletePromises = filteredRequests.map((req) =>
-        fetch("/api/requests-delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: req.id }),
-        })
-      );
-
-      await Promise.all(deletePromises);
-
+      await Promise.all(filteredRequests.map((req) => fetch("/api/requests-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: req.id }) })));
       const deletedIds = new Set(filteredRequests.map((r) => r.id));
       setRequests((prev) => prev.filter((req) => !deletedIds.has(req.id)));
-    } catch (err) {
-      console.error("Error deleting requests:", err);
-      alert("Error deleting some requests. Please refresh and try again.");
-    }
+    } catch (err) { alert("Error deleting requests."); }
   }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    window.location.href = "/login";
-  }
+  async function handleLogout() { await supabase.auth.signOut(); window.location.href = "/login"; }
 
   function timeAgo(timestamp) {
-    const now = new Date();
-    const past = new Date(timestamp);
-    const diff = (now - past) / 1000;
+    const diff = (new Date() - new Date(timestamp)) / 1000;
     if (diff < 60) return "just now";
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -724,21 +559,14 @@ export default function Dashboard() {
   function formatPhoneNumber(phoneNumber) {
     if (!phoneNumber) return "Not assigned";
     const cleaned = phoneNumber.replace(/\D/g, "");
-    let core = cleaned;
-    if (cleaned.length === 11 && cleaned.startsWith("1")) {
-      core = cleaned.slice(1);
-    }
-    if (core.length === 10) {
-      return `(${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
-    }
+    let core = cleaned.length === 11 && cleaned.startsWith("1") ? cleaned.slice(1) : cleaned;
+    if (core.length === 10) return `(${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
     return phoneNumber;
   }
 
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
-    if (filterStatus === "pending") {
-      return req.status === "pending";
-    }
+    if (filterStatus === "pending") return req.status === "pending";
     return req.status === filterStatus;
   });
 
@@ -752,191 +580,224 @@ export default function Dashboard() {
 
   const currentPlatform = PLATFORMS[selectedPlatform];
 
-  // Calculate next song for UI display
   const nextSong = (() => {
     if (!playbackTab || !currentPlayingRequest) return null;
-
-    const tabRequests = getRequestsForTab(playbackTab, requests).filter(
-      (r) => r.youtube_video_id
-    );
-
-    const currentIndex = tabRequests.findIndex(
-      (r) => r.id === currentPlayingRequest.id
-    );
-
-    if (currentIndex === -1 || currentIndex >= tabRequests.length - 1) {
-      return tabRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
-    }
-
+    const tabRequests = getRequestsForTab(playbackTab, requests).filter((r) => r.youtube_video_id);
+    const currentIndex = tabRequests.findIndex((r) => r.id === currentPlayingRequest.id);
+    if (currentIndex === -1 || currentIndex >= tabRequests.length - 1) return tabRequests.find((r) => r.id !== currentPlayingRequest.id) || null;
     return tabRequests[currentIndex + 1] || null;
   })();
 
+  // ============ SETTINGS MODAL ============
+  const SettingsModal = () => (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowSettingsModal(false)}>
+      <div className="bg-[#12121a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b border-white/5 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2"><Settings size={20} className="text-purple-400" />Settings</h2>
+          <button onClick={() => setShowSettingsModal(false)} className="p-2 rounded-lg hover:bg-white/10"><X size={20} className="text-gray-400" /></button>
+        </div>
+        <div className="flex border-b border-white/5 overflow-x-auto">
+          {[{ key: "general", label: "General", icon: Settings }, { key: "moderation", label: "Moderation", icon: Shield }, { key: "autodj", label: "Auto-DJ", icon: Zap }, { key: "branding", label: "Branding", icon: Palette }, { key: "billing", label: "Billing", icon: CreditCard }].map(tab => (
+            <button key={tab.key} onClick={() => setSettingsTab(tab.key)} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-all ${settingsTab === tab.key ? "text-purple-400 border-b-2 border-purple-400 bg-purple-500/5" : "text-gray-400 hover:text-white hover:bg-white/5"}`}>
+              <tab.icon size={16} />{tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          {settingsTab === "general" && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3">Video Preferences</h3>
+                <label className="flex items-center justify-between p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
+                  <div><p className="text-sm text-white">Prefer Official Videos</p><p className="text-xs text-gray-500">Prioritize official audio/lyric videos</p></div>
+                  <input type="checkbox" checked={preferOfficialVideos} onChange={(e) => setPreferOfficialVideos(e.target.checked)} className="w-5 h-5 rounded accent-purple-500" />
+                </label>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3">Default Platform</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(PLATFORMS).map(([key, platform]) => (
+                    <button key={key} onClick={() => updatePlatformPreference(key)} className={`flex items-center gap-2 p-3 rounded-lg transition-all ${selectedPlatform === key ? `${platform.bgColor} ${platform.borderColor} border` : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
+                      <span className="text-xl">{platform.icon}</span><span className={`text-sm font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {settingsTab === "moderation" && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2"><UserX size={16} className="text-red-400" />Banned Phones ({bannedPhones.length})</h3>
+                {bannedPhones.length === 0 ? <p className="text-sm text-gray-500 p-3 bg-white/5 rounded-lg">No banned numbers yet.</p> : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {bannedPhones.map((phone, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                        <span className="text-sm text-gray-300">{phone}</span>
+                        <button onClick={() => setBannedPhones(prev => prev.filter((_, idx) => idx !== i))} className="text-xs text-red-400 hover:text-red-300">Unban</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2"><MusicOff size={16} className="text-orange-400" />Banned Songs ({bannedSongs.length})</h3>
+                {bannedSongs.length === 0 ? <p className="text-sm text-gray-500 p-3 bg-white/5 rounded-lg">No banned songs yet.</p> : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {bannedSongs.map((song, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                        <span className="text-sm text-gray-300">{song.title} - {song.artist}</span>
+                        <button onClick={() => setBannedSongs(prev => prev.filter((_, idx) => idx !== i))} className="text-xs text-orange-400 hover:text-orange-300">Unban</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {settingsTab === "autodj" && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <div className="flex items-center gap-2 mb-2"><Zap size={16} className="text-blue-400" /><span className="text-sm font-semibold text-blue-400">Auto-DJ Rules</span></div>
+                <p className="text-xs text-gray-400">Automatically filter requests based on your preferences.</p>
+              </div>
+              <label className="flex items-center justify-between p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
+                <div><p className="text-sm text-white">Auto-reject Explicit Content</p><p className="text-xs text-gray-500">Automatically reject explicit songs</p></div>
+                <input type="checkbox" checked={autoDjRules.autoRejectExplicit} onChange={(e) => updateAutoDjRule("autoRejectExplicit", e.target.checked)} className="w-5 h-5 rounded accent-purple-500" />
+              </label>
+              <div className="p-3 rounded-lg bg-white/5">
+                <p className="text-sm text-white mb-2">Max Requests Per Phone (per hour)</p>
+                <p className="text-xs text-gray-500 mb-3">0 = unlimited</p>
+                <input type="number" min="0" max="100" value={autoDjRules.maxRequestsPerPhone} onChange={(e) => updateAutoDjRule("maxRequestsPerPhone", parseInt(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500" />
+              </div>
+              <div className="p-3 rounded-lg bg-white/5">
+                <p className="text-sm text-white mb-2">Cooldown Between Requests (minutes)</p>
+                <p className="text-xs text-gray-500 mb-3">0 = no cooldown</p>
+                <input type="number" min="0" max="60" value={autoDjRules.cooldownMinutes} onChange={(e) => updateAutoDjRule("cooldownMinutes", parseInt(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500" />
+              </div>
+            </div>
+          )}
+          {settingsTab === "branding" && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3">Your Text Tag</h3>
+                <div className="p-4 rounded-lg bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-pink-500/20">
+                  <p className="text-lg font-bold text-white mb-2">Text {djProfile?.dj_name || "DJ"} at {formatPhoneNumber(djProfile?.twilio_number)}</p>
+                  <button onClick={copyDjTag} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm text-gray-300">
+                    <Copy size={14} />{tagCopied ? "Copied!" : "Copy Tag"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-3">DJ Display Name</h3>
+                <input type="text" value={djTag} onChange={(e) => setDjTag(e.target.value)} placeholder="DJ Name" className="w-full px-3 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500" />
+                <p className="text-xs text-gray-500 mt-2">This name appears in your text tag</p>
+              </div>
+              <div className="opacity-50">
+                <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2"><Link size={14} />Custom Tip Link<span className="text-xs text-purple-400 bg-purple-500/20 px-2 py-0.5 rounded">Coming Soon</span></h3>
+                <input type="text" disabled placeholder="https://venmo.com/yourname" className="w-full px-3 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-gray-500 text-sm" />
+              </div>
+            </div>
+          )}
+          {settingsTab === "billing" && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2"><Crown size={20} className="text-yellow-400" /><span className="text-lg font-bold text-white capitalize">{accountPlan.tier} Plan</span></div>
+                  {accountPlan.tier === "free" && <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-full">Upgrade</span>}
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <div><p className="text-gray-400">Requests this month</p><p className="text-white font-semibold">{accountPlan.requestsThisMonth} / {accountPlan.requestLimit}</p></div>
+                  <div className="w-px h-8 bg-white/10" />
+                  <div><p className="text-gray-400">Status</p><p className="text-green-400 font-semibold">Active</p></div>
+                </div>
+              </div>
+              <div className="opacity-50">
+                <h3 className="text-sm font-semibold text-white mb-3">Available Plans</h3>
+                <div className="grid gap-3">
+                  {[{ name: "Free", price: "$0", features: ["100 requests/month", "Basic analytics"] }, { name: "Pro", price: "$9.99/mo", features: ["Unlimited requests", "Advanced analytics", "Priority support"] }, { name: "Enterprise", price: "Contact us", features: ["Everything in Pro", "Custom integrations", "Dedicated support"] }].map(plan => (
+                    <div key={plan.name} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="flex items-center justify-between mb-2"><span className="font-semibold text-white">{plan.name}</span><span className="text-purple-400">{plan.price}</span></div>
+                      <ul className="text-xs text-gray-400 space-y-1">{plan.features.map((f, i) => <li key={i}>• {f}</li>)}</ul>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-center text-gray-500 mt-3">Billing features coming soon</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] text-white">
-      {/* Background Effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[120px]" />
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* PERSISTENT PLAYER SYSTEM */}
+      {showSettingsModal && <SettingsModal />}
+
       {videoModal && (
         <>
-          <div
-            className={`fixed inset-0 bg-black/95 backdrop-blur-md z-40 transition-opacity duration-200 ${
-              isMinimized ? "opacity-0 pointer-events-none" : "opacity-100 pointer-events-auto"
-            }`}
-            onClick={() => setIsMinimized(true)}
-          />
-
-          <div
-            className={`fixed z-50 transition-all duration-300 ease-out ${
-              isMinimized
-                ? "bottom-0 left-0 right-0 top-auto p-0"
-                : "inset-0 p-2 sm:p-4 flex items-center justify-center"
-            }`}
-          >
-            <div
-              className={`bg-[#16161f] shadow-2xl border border-white/10 overflow-hidden transition-all duration-300 ${
-                isMinimized
-                  ? "w-full max-w-none rounded-t-xl rounded-b-none"
-                  : "w-full max-w-4xl rounded-2xl"
-              }`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Full Mode Header */}
+          <div className={`fixed inset-0 bg-black/95 backdrop-blur-md z-40 transition-opacity duration-200 ${isMinimized ? "opacity-0 pointer-events-none" : "opacity-100"}`} onClick={() => setIsMinimized(true)} />
+          <div className={`fixed z-50 transition-all duration-300 ease-out ${isMinimized ? "bottom-0 left-0 right-0 top-auto p-0" : "inset-0 p-2 sm:p-4 flex items-center justify-center"}`}>
+            <div className={`bg-[#16161f] shadow-2xl border border-white/10 overflow-hidden transition-all duration-300 ${isMinimized ? "w-full max-w-none rounded-t-xl rounded-b-none" : "w-full max-w-4xl rounded-2xl"}`} onClick={(e) => e.stopPropagation()}>
               {!isMinimized && currentPlayingRequest && (
                 <div className="p-3 sm:p-4 border-b border-white/5 bg-[#12121a]">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0">
-                        <Play size={16} className="text-pink-400 fill-pink-400" />
-                      </div>
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-pink-500/20 flex items-center justify-center flex-shrink-0"><Play size={16} className="text-pink-400 fill-pink-400" /></div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">Now Playing</p>
-                          {playbackTab && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${TABS.find((t) => t.key === playbackTab)?.activeClass || "bg-white/10"}`}>
-                              {TABS.find((t) => t.key === playbackTab)?.label}
-                            </span>
-                          )}
+                          {playbackTab && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${TABS.find((t) => t.key === playbackTab)?.activeClass || "bg-white/10"}`}>{TABS.find((t) => t.key === playbackTab)?.label}</span>}
                         </div>
                         <h3 className="font-semibold text-white text-sm sm:text-base truncate">{currentPlayingRequest.title}</h3>
                         <p className="text-xs sm:text-sm text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                       </div>
                     </div>
-                    {nextSong && (
-                      <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
-                        <span>Up next:</span>
-                        <span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span>
-                      </div>
-                    )}
+                    {nextSong && <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 flex-shrink-0"><span>Up next:</span><span className="text-gray-300 truncate max-w-[150px]">{nextSong.title}</span></div>}
                   </div>
                 </div>
               )}
-
-              {/* YouTube Player - Use h-px when minimized instead of h-0 to prevent YouTube from pausing, opacity-0 to hide visually */}
-              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px opacity-0 pointer-events-none" : "aspect-video"}`}>
-                <div id="youtube-player" className="w-full h-full" />
-              </div>
-
-              {/* Full Mode Controls */}
+              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px opacity-0 pointer-events-none" : "aspect-video"}`}><div id="youtube-player" className="w-full h-full" /></div>
               {!isMinimized && (
                 <div className="p-2 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t border-white/5 bg-[#12121a] gap-2 sm:gap-3">
                   <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
-                    <button onClick={togglePlayPause} className="p-2 sm:px-4 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
-                      {isPlaying ? <Pause size={18} className="text-white" /> : <Play size={18} className="text-white fill-white" />}
-                    </button>
-                    <button onClick={() => setIsMuted(!isMuted)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-green-500/20 text-green-400 border border-green-500/30"}`}>
-                      {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                    </button>
-                    <button onClick={() => setAutoPlay(!autoPlay)} className={`p-2 sm:px-4 sm:py-2 rounded-lg transition-all ${autoPlay ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"}`} title={autoPlay ? "Auto-play ON" : "Auto-play OFF"}>
-                      <SkipForward size={18} />
-                    </button>
+                    <button onClick={togglePlayPause} className="p-2 sm:px-4 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10">{isPlaying ? <Pause size={18} className="text-white" /> : <Play size={18} className="text-white fill-white" />}</button>
+                    <button onClick={() => setIsMuted(!isMuted)} className={`p-2 sm:px-4 sm:py-2 rounded-lg ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-green-500/20 text-green-400 border border-green-500/30"}`}>{isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+                    <button onClick={() => setAutoPlay(!autoPlay)} className={`p-2 sm:px-4 sm:py-2 rounded-lg ${autoPlay ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"}`} title={autoPlay ? "Auto-play ON" : "Auto-play OFF"}><SkipForward size={18} /></button>
                   </div>
                   <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
-                    {nextSong && (
-                      <button onClick={handleSkipToNext} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 transition-all" title="Skip to next">
-                        <SkipForward size={16} />
-                      </button>
-                    )}
-                    <button onClick={handleApproveAndContinue} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition-all" title="Approve">
-                      <ThumbsUp size={16} />
-                    </button>
-                    <button onClick={handleMarkPlayedAndClose} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all" title="Mark as Played">
-                      <Check size={16} />
-                    </button>
-                    <button onClick={() => setIsMinimized(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all" title="Minimize">
-                      <Minimize2 size={16} />
-                    </button>
-                    <button onClick={handleCloseModal} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all" title="Close">
-                      <X size={16} />
-                    </button>
+                    {nextSong && <button onClick={handleSkipToNext} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30" title="Skip to next"><SkipForward size={16} /></button>}
+                    <button onClick={handleApproveAndContinue} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30" title="Approve"><ThumbsUp size={16} /></button>
+                    <button onClick={handleMarkPlayedAndClose} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30" title="Mark as Played"><Check size={16} /></button>
+                    <button onClick={() => setIsMinimized(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white" title="Minimize"><Minimize2 size={16} /></button>
+                    <button onClick={handleCloseModal} className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400" title="Close"><X size={16} /></button>
                   </div>
                 </div>
               )}
-
-              {/* Minimized Bar */}
               {isMinimized && currentPlayingRequest && (
                 <div className="bg-[#12121a] border-t border-white/10">
                   <div className="max-w-6xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
                     <div className="flex items-center gap-3">
-                      {/* Thumbnail */}
                       <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
-                        {currentPlayingRequest.thumbnail ? (
-                          <img src={currentPlayingRequest.thumbnail} alt={currentPlayingRequest.title} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Music size={18} className="text-gray-600" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
-                          <div className="flex gap-0.5">
-                            {[0, 150, 300].map((delay) => (
-                              <div key={delay} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />
-                            ))}
-                          </div>
-                        </div>
+                        {currentPlayingRequest.thumbnail ? <img src={currentPlayingRequest.thumbnail} alt={currentPlayingRequest.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Music size={18} className="text-gray-600" /></div>}
+                        <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center"><div className="flex gap-0.5">{[0, 150, 300].map((d) => <div key={d} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />)}</div></div>
                       </div>
-
-                      {/* Song Info */}
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
-                        <h4 className="font-semibold text-white text-sm truncate">{currentPlayingRequest.title}</h4>
-                        <p className="text-xs text-gray-400 truncate">{currentPlayingRequest.artist}</p>
-                      </div>
-
-                      {/* Controls - includes skip button */}
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsMinimized(false)}><h4 className="font-semibold text-white text-sm truncate">{currentPlayingRequest.title}</h4><p className="text-xs text-gray-400 truncate">{currentPlayingRequest.artist}</p></div>
                       <div className="flex items-center gap-1 sm:gap-2">
-                        <button onClick={togglePlayPause} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
-                          {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white" />}
-                        </button>
-                        <button onClick={() => setIsMuted(!isMuted)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400" : "bg-green-500/20 text-green-400"}`}>
-                          {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                        </button>
-                        {/* Skip button - always visible if there's a next song */}
-                        {nextSong && (
-                          <button onClick={handleSkipToNext} className="p-1.5 sm:p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all" title={`Skip to: ${nextSong.title}`}>
-                            <SkipForward size={16} />
-                          </button>
-                        )}
-                        <button onClick={() => setIsMinimized(false)} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition-all">
-                          <Maximize2 size={16} />
-                        </button>
-                        <button onClick={handleCloseModal} className="p-1.5 sm:p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
-                          <X size={16} />
-                        </button>
+                        <button onClick={togglePlayPause} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10">{isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white" />}</button>
+                        <button onClick={() => setIsMuted(!isMuted)} className={`p-1.5 sm:p-2 rounded-lg ${isMuted ? "bg-white/5 text-gray-400" : "bg-green-500/20 text-green-400"}`}>{isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+                        {nextSong && <button onClick={handleSkipToNext} className="p-1.5 sm:p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400" title={`Skip to: ${nextSong.title}`}><SkipForward size={16} /></button>}
+                        <button onClick={() => setIsMinimized(false)} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white"><Maximize2 size={16} /></button>
+                        <button onClick={handleCloseModal} className="p-1.5 sm:p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400"><X size={16} /></button>
                       </div>
                     </div>
-
-                    {/* Up Next Preview */}
-                    {nextSong && (
-                      <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
-                        <span>Up next:</span>
-                        <span className="text-gray-300 truncate">{nextSong.title}</span>
-                        <span className="text-gray-600">by</span>
-                        <span className="text-gray-400 truncate">{nextSong.artist}</span>
-                      </div>
-                    )}
+                    {nextSong && <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500"><span>Up next:</span><span className="text-gray-300 truncate">{nextSong.title}</span><span className="text-gray-600">by</span><span className="text-gray-400 truncate">{nextSong.artist}</span></div>}
                   </div>
                 </div>
               )}
@@ -945,288 +806,102 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* Main Content */}
       <div className={`relative max-w-7xl mx-auto p-3 sm:p-6 lg:p-8 ${videoModal && isMinimized ? "pb-28 sm:pb-36" : ""}`}>
-        {/* Header */}
         <header className="flex items-center justify-between mb-4 sm:mb-8">
           <div className="flex items-center gap-2 sm:gap-4">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <Disc3 size={20} className="text-white sm:hidden" />
-              <Disc3 size={24} className="text-white hidden sm:block" />
+              <Disc3 size={20} className="text-white sm:hidden" /><Disc3 size={24} className="text-white hidden sm:block" />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">TextMyTrack</h1>
-              <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">DJ Request Dashboard</p>
-            </div>
+            <div><h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">TextMyTrack</h1><p className="text-xs sm:text-sm text-gray-500 hidden sm:block">DJ Request Dashboard</p></div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <button onClick={handleLogout} className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2">
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
+            <button onClick={() => setShowSettingsModal(true)} className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10" title="Settings"><Settings size={16} className="text-gray-400" /></button>
+            <button onClick={handleLogout} className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium text-gray-300 flex items-center gap-2"><LogOut size={16} /><span className="hidden sm:inline">Logout</span></button>
           </div>
         </header>
 
-        {/* Mobile Info Cards */}
         <div className="lg:hidden space-y-3 mb-4">
-          {/* DJ Info Banner */}
           <div className="p-3 rounded-xl bg-[#12121a] border border-white/5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Phone size={16} className="text-blue-400" />
-                <span className="text-sm text-gray-400">Request Line:</span>
-                {djProfile ? (
-                  <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span>
-                ) : (
-                  <span className="text-sm text-gray-500">Loading...</span>
-                )}
-              </div>
-              <span className="text-xs text-green-400 font-medium">● Live</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2"><Phone size={16} className="text-blue-400" /><span className="text-sm text-gray-400">Request Line:</span>{djProfile ? <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span> : <span className="text-sm text-gray-500">Loading...</span>}</div>
             </div>
+            <button onClick={toggleAcceptingRequests} className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition-all ${acceptingRequests ? "bg-green-500/10 border border-green-500/20 text-green-400" : "bg-red-500/10 border border-red-500/20 text-red-400"}`}>
+              {acceptingRequests ? <Power size={14} /> : <PowerOff size={14} />}<span className="text-xs font-medium">{acceptingRequests ? "● Accepting Requests" : "● Requests Paused"}</span>
+            </button>
           </div>
-
-          {/* Mobile Stats - Collapsible */}
           <div className="rounded-xl bg-[#12121a] border border-white/5 overflow-hidden">
             <button onClick={() => setShowMobileStats(!showMobileStats)} className="w-full p-3 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-300">Tonight's Stats</span>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-yellow-400">{stats.pending}</span>
-                  <span className="text-gray-600">/</span>
-                  <span className="text-blue-400">{stats.approved}</span>
-                  <span className="text-gray-600">/</span>
-                  <span className="text-green-400">{stats.played}</span>
-                </div>
-                {showMobileStats ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-              </div>
+              <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-xs"><span className="text-yellow-400">{stats.pending}</span><span className="text-gray-600">/</span><span className="text-blue-400">{stats.approved}</span><span className="text-gray-600">/</span><span className="text-green-400">{stats.played}</span></div>{showMobileStats ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}</div>
             </button>
-            {showMobileStats && (
-              <div className="px-3 pb-3 pt-0 border-t border-white/5">
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                    <div className="flex items-center gap-2">
-                      <Circle size={8} className="fill-yellow-400 text-yellow-400" />
-                      <span className="text-xs text-gray-400">Pending</span>
-                    </div>
-                    <span className="text-sm font-semibold text-yellow-400">{stats.pending}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                    <div className="flex items-center gap-2">
-                      <Circle size={8} className="fill-blue-400 text-blue-400" />
-                      <span className="text-xs text-gray-400">Approved</span>
-                    </div>
-                    <span className="text-sm font-semibold text-blue-400">{stats.approved}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                    <div className="flex items-center gap-2">
-                      <Circle size={8} className="fill-red-400 text-red-400" />
-                      <span className="text-xs text-gray-400">Rejected</span>
-                    </div>
-                    <span className="text-sm font-semibold text-red-400">{stats.rejected}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                    <div className="flex items-center gap-2">
-                      <Circle size={8} className="fill-green-400 text-green-400" />
-                      <span className="text-xs text-gray-400">Played</span>
-                    </div>
-                    <span className="text-sm font-semibold text-green-400">{stats.played}</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {showMobileStats && <div className="px-3 pb-3 pt-0 border-t border-white/5"><div className="grid grid-cols-2 gap-2 mt-3">{[{ label: "Pending", value: stats.pending, color: "yellow" }, { label: "Approved", value: stats.approved, color: "blue" }, { label: "Rejected", value: stats.rejected, color: "red" }, { label: "Played", value: stats.played, color: "green" }].map(s => <div key={s.label} className="flex items-center justify-between p-2 rounded-lg bg-white/5"><div className="flex items-center gap-2"><Circle size={8} className={`fill-${s.color}-400 text-${s.color}-400`} /><span className="text-xs text-gray-400">{s.label}</span></div><span className={`text-sm font-semibold text-${s.color}-400`}>{s.value}</span></div>)}</div></div>}
           </div>
-
-          {/* Mobile Platform Selector - Collapsible */}
           <div className="rounded-xl bg-[#12121a] border border-white/5 overflow-hidden">
             <button onClick={() => setShowMobilePlatforms(!showMobilePlatforms)} className="w-full p-3 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-300">Open Songs In</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{currentPlatform.icon}</span>
-                <span className={`text-sm ${currentPlatform.textColor}`}>{currentPlatform.name}</span>
-                {showMobilePlatforms ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-              </div>
+              <div className="flex items-center gap-2"><span className="text-xl">{currentPlatform.icon}</span><span className={`text-sm ${currentPlatform.textColor}`}>{currentPlatform.name}</span>{showMobilePlatforms ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}</div>
             </button>
-            {showMobilePlatforms && (
-              <div className="px-3 pb-3 pt-0 border-t border-white/5">
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  {Object.entries(PLATFORMS).map(([key, platform]) => (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        updatePlatformPreference(key);
-                        setShowMobilePlatforms(false);
-                      }}
-                      className={`flex items-center gap-2 p-2 rounded-lg transition-all ${
-                        selectedPlatform === key
-                          ? `${platform.bgColor} ${platform.borderColor} border`
-                          : "bg-white/5 border border-transparent"
-                      }`}
-                    >
-                      <span className="text-lg">{platform.icon}</span>
-                      <span className={`text-xs font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {showMobilePlatforms && <div className="px-3 pb-3 pt-0 border-t border-white/5"><div className="grid grid-cols-2 gap-2 mt-3">{Object.entries(PLATFORMS).map(([key, platform]) => <button key={key} onClick={() => { updatePlatformPreference(key); setShowMobilePlatforms(false); }} className={`flex items-center gap-2 p-2 rounded-lg transition-all ${selectedPlatform === key ? `${platform.bgColor} ${platform.borderColor} border` : "bg-white/5 border border-transparent"}`}><span className="text-lg">{platform.icon}</span><span className={`text-xs font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span></button>)}</div></div>}
           </div>
         </div>
 
-        {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-          {/* Sidebar - Desktop Only */}
           <div className="hidden lg:block lg:col-span-1 space-y-6">
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                  <Phone size={18} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Your Request Line</p>
-                  {djProfile ? (
-                    <p className="text-lg font-bold text-white">{formatPhoneNumber(djProfile.twilio_number)}</p>
-                  ) : profileError ? (
-                    <p className="text-sm text-red-400">{profileError}</p>
-                  ) : (
-                    <p className="text-sm text-gray-500">Loading...</p>
-                  )}
-                </div>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center"><Phone size={18} className="text-white" /></div>
+                <div><p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Your Request Line</p>{djProfile ? <p className="text-lg font-bold text-white">{formatPhoneNumber(djProfile.twilio_number)}</p> : profileError ? <p className="text-sm text-red-400">{profileError}</p> : <p className="text-sm text-gray-500">Loading...</p>}</div>
               </div>
-              <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
-                <span className="text-xs text-green-400 font-medium">● Accepting Requests</span>
-              </div>
+              <button onClick={toggleAcceptingRequests} className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg transition-all ${acceptingRequests ? "bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20" : "bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20"}`}>
+                {acceptingRequests ? <Power size={16} /> : <PowerOff size={16} />}<span className="text-sm font-medium">{acceptingRequests ? "● Accepting Requests" : "● Requests Paused"}</span>
+              </button>
+              <button onClick={copyDjTag} className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-gray-400"><Copy size={12} />{tagCopied ? "Copied!" : "Copy Text Tag"}</button>
             </div>
-
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Open Songs In</p>
-              <div className="space-y-2">
-                {Object.entries(PLATFORMS).map(([key, platform]) => (
-                  <button key={key} onClick={() => updatePlatformPreference(key)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${selectedPlatform === key ? `${platform.bgColor} ${platform.borderColor} border-2` : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
-                    <span className="text-xl">{platform.icon}</span>
-                    <span className={`font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>
-                    {selectedPlatform === key && <CheckCircle2 size={16} className={`ml-auto ${platform.textColor}`} />}
-                  </button>
-                ))}
-              </div>
+              <div className="space-y-2">{Object.entries(PLATFORMS).map(([key, platform]) => <button key={key} onClick={() => updatePlatformPreference(key)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${selectedPlatform === key ? `${platform.bgColor} ${platform.borderColor} border-2` : "bg-white/5 border border-transparent hover:bg-white/10"}`}><span className="text-xl">{platform.icon}</span><span className={`font-medium ${selectedPlatform === key ? platform.textColor : "text-gray-300"}`}>{platform.name}</span>{selectedPlatform === key && <CheckCircle2 size={16} className={`ml-auto ${platform.textColor}`} />}</button>)}</div>
             </div>
-
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Tonight's Stats</p>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-400 text-sm">Total</span>
-                  <span className="text-white font-bold text-lg">{stats.total}</span>
-                </div>
+                <div className="flex items-center justify-between"><span className="text-gray-400 text-sm">Total</span><span className="text-white font-bold text-lg">{stats.total}</span></div>
                 <div className="h-px bg-white/5" />
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-yellow-400 text-yellow-400" />
-                    <span className="text-gray-400 text-sm">Pending</span>
-                  </div>
-                  <span className="text-yellow-400 font-semibold">{stats.pending}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-blue-400 text-blue-400" />
-                    <span className="text-gray-400 text-sm">Approved</span>
-                  </div>
-                  <span className="text-blue-400 font-semibold">{stats.approved}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-red-400 text-red-400" />
-                    <span className="text-gray-400 text-sm">Rejected</span>
-                  </div>
-                  <span className="text-red-400 font-semibold">{stats.rejected}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Circle size={8} className="fill-green-400 text-green-400" />
-                    <span className="text-gray-400 text-sm">Played</span>
-                  </div>
-                  <span className="text-green-400 font-semibold">{stats.played}</span>
-                </div>
+                {[{ label: "Pending", value: stats.pending, color: "yellow" }, { label: "Approved", value: stats.approved, color: "blue" }, { label: "Rejected", value: stats.rejected, color: "red" }, { label: "Played", value: stats.played, color: "green" }].map(s => <div key={s.label} className="flex items-center justify-between"><div className="flex items-center gap-2"><Circle size={8} className={`fill-${s.color}-400 text-${s.color}-400`} /><span className="text-gray-400 text-sm">{s.label}</span></div><span className={`text-${s.color}-400 font-semibold`}>{s.value}</span></div>)}
+              </div>
+            </div>
+            <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
+              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Coming Soon</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 opacity-50"><BarChart3 size={16} className="text-purple-400" /><span className="text-sm text-gray-400">Analytics Dashboard</span></div>
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 opacity-50"><MessageSquare size={16} className="text-blue-400" /><span className="text-sm text-gray-400">AI Chat Assistant</span></div>
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 opacity-50"><Music size={16} className="text-green-400" /><span className="text-sm text-gray-400">Playlist Export</span></div>
               </div>
             </div>
           </div>
 
-          {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Tab Navigation - Desktop: flex-wrap, Mobile: horizontal scroll */}
             <div className="mb-4 sm:mb-6">
-              {/* Desktop Tabs - flex wrap, no arrows */}
               <div className="hidden sm:flex items-center gap-2 flex-wrap">
-                {TABS.map((tab) => {
-                  const TabIcon = tab.icon;
-                  const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
-                  return (
-                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap border ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"}`}>
-                      <TabIcon size={16} />
-                      <span>{tab.label}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
-                    </button>
-                  );
-                })}
-                {filteredRequests.length > 0 && (
-                  <button onClick={deleteAllFiltered} className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20">
-                    <Trash2 size={16} />
-                    <span>Clear All</span>
-                  </button>
-                )}
+                {TABS.map((tab) => { const TabIcon = tab.icon; const count = tab.key === "all" ? stats.total : stats[tab.key] || 0; return <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap border ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent hover:bg-white/10"}`}><TabIcon size={16} /><span>{tab.label}</span><span className={`px-1.5 py-0.5 rounded-md text-xs ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span></button>; })}
+                {filteredRequests.length > 0 && <button onClick={deleteAllFiltered} className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"><Trash2 size={16} /><span>Clear All</span></button>}
               </div>
-
-              {/* Mobile Tabs - horizontal scroll */}
               <div className="sm:hidden flex items-center gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                {TABS.map((tab) => {
-                  const TabIcon = tab.icon;
-                  const count = tab.key === "all" ? stats.total : stats[tab.key] || 0;
-                  return (
-                    <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap border flex-shrink-0 ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent"}`}>
-                      <TabIcon size={14} />
-                      <span>{tab.shortLabel}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span>
-                    </button>
-                  );
-                })}
-                {filteredRequests.length > 0 && (
-                  <button onClick={deleteAllFiltered} className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 flex-shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                )}
+                {TABS.map((tab) => { const TabIcon = tab.icon; const count = tab.key === "all" ? stats.total : stats[tab.key] || 0; return <button key={tab.key} onClick={() => setFilterStatus(tab.key)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap border flex-shrink-0 ${filterStatus === tab.key ? tab.activeClass : "bg-white/5 text-gray-400 border-transparent"}`}><TabIcon size={14} /><span>{tab.shortLabel}</span><span className={`px-1.5 py-0.5 rounded-md text-[10px] ${filterStatus === tab.key ? "bg-white/20" : "bg-white/10"}`}>{count}</span></button>; })}
+                {filteredRequests.length > 0 && <button onClick={deleteAllFiltered} className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 flex-shrink-0"><Trash2 size={14} /></button>}
               </div>
             </div>
 
-            {/* Playback Tab Indicator */}
             {playbackTab && playbackTab !== filterStatus && (
               <div className="mb-4 p-2.5 sm:p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs sm:text-sm">
-                  <div className="flex gap-0.5">
-                    {[0, 150, 300].map((delay) => (
-                      <div key={delay} className="w-1 h-3 sm:h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />
-                    ))}
-                  </div>
-                  <span className="text-pink-400">Playing: <strong>{TABS.find((t) => t.key === playbackTab)?.label}</strong></span>
-                </div>
-                <button onClick={() => setFilterStatus(playbackTab)} className="text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 transition-all">View</button>
+                <div className="flex items-center gap-2 text-xs sm:text-sm"><div className="flex gap-0.5">{[0, 150, 300].map((d) => <div key={d} className="w-1 h-3 sm:h-4 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />)}</div><span className="text-pink-400">Playing: <strong>{TABS.find((t) => t.key === playbackTab)?.label}</strong></span></div>
+                <button onClick={() => setFilterStatus(playbackTab)} className="text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400">View</button>
               </div>
             )}
 
-            {/* Request List */}
             {loading ? (
-              <div className="text-center py-12 sm:py-20">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-gray-500 text-sm">Loading requests...</p>
-              </div>
+              <div className="text-center py-12 sm:py-20"><div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" /><p className="text-gray-500 text-sm">Loading requests...</p></div>
             ) : filteredRequests.length === 0 ? (
-              <div className="text-center py-12 sm:py-20">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
-                  <ListMusic size={28} className="text-gray-600" />
-                </div>
-                <h3 className="text-base sm:text-lg font-semibold text-gray-400 mb-2">No {TABS.find((t) => t.key === filterStatus)?.label.toLowerCase()} yet</h3>
-                <p className="text-gray-600 text-xs sm:text-sm px-4">
-                  {filterStatus === "pending" ? "Waiting for song requests..." : filterStatus === "approved" ? "Approve requests to see them here" : filterStatus === "rejected" ? "Rejected requests will appear here" : filterStatus === "played" ? "Played songs will appear here" : "No requests yet"}
-                </p>
-              </div>
+              <div className="text-center py-12 sm:py-20"><div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4"><ListMusic size={28} className="text-gray-600" /></div><h3 className="text-base sm:text-lg font-semibold text-gray-400 mb-2">No {TABS.find((t) => t.key === filterStatus)?.label.toLowerCase()} yet</h3><p className="text-gray-600 text-xs sm:text-sm px-4">{filterStatus === "pending" ? "Waiting for song requests..." : filterStatus === "approved" ? "Approve requests to see them here" : filterStatus === "rejected" ? "Rejected requests will appear here" : filterStatus === "played" ? "Played songs will appear here" : "No requests yet"}</p></div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
                 {filteredRequests.map((req, index) => {
@@ -1239,196 +914,62 @@ export default function Dashboard() {
 
                   return (
                     <div key={req.id} className={`group p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${isCurrentlyPlaying ? "bg-pink-500/10 border-pink-500/30" : "bg-[#12121a] border-white/5 hover:border-white/10"}`}>
-                      {/* Mobile Layout */}
                       <div className="sm:hidden">
                         <div className="flex items-start gap-3">
                           <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
                             {req.thumbnail ? <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Music size={20} className="text-gray-600" /></div>}
-                            {hasUrl && !isCurrentlyPlaying && (
-                              <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                <Play size={18} className="text-white fill-white" />
-                              </button>
-                            )}
-                            {isCurrentlyPlaying && (
-                              <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
-                                <div className="flex gap-0.5">
-                                  {[0, 150, 300].map((delay) => <div key={delay} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />)}
-                                </div>
-                              </div>
-                            )}
+                            {hasUrl && !isCurrentlyPlaying && <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 flex items-center justify-center"><Play size={18} className="text-white fill-white" /></button>}
+                            {isCurrentlyPlaying && <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center"><div className="flex gap-0.5">{[0, 150, 300].map((d) => <div key={d} className="w-0.5 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />)}</div></div>}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <h3 className="font-semibold text-white text-sm leading-tight truncate" onClick={() => hasUrl && handleOpenVideo(req, filterStatus)}>{req.title}</h3>
-                                <p className="text-xs text-gray-400 truncate mt-0.5">{req.artist}</p>
-                              </div>
-                              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
-                                {isCurrentlyPlaying ? "▶" : isPlayed ? "✓" : isApproved ? "👍" : isRejected ? "✕" : "⏳"}
-                              </span>
+                              <div className="min-w-0 flex-1"><h3 className="font-semibold text-white text-sm leading-tight truncate" onClick={() => hasUrl && handleOpenVideo(req, filterStatus)}>{req.title}</h3><p className="text-xs text-gray-400 truncate mt-0.5">{req.artist}</p></div>
+                              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>{isCurrentlyPlaying ? "▶" : isPlayed ? "✓" : isApproved ? "👍" : isRejected ? "✕" : "⏳"}</span>
                             </div>
-                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
-                              {req.explicit === "Explicit" && <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">E</span>}
-                              <span className="truncate">{req.requestedBy}</span>
-                              <span>•</span>
-                              <span>{timeAgo(req.requestedAt)}</span>
-                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">{req.explicit === "Explicit" && <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">E</span>}<span className="truncate">{req.requestedBy}</span><span>•</span><span>{timeAgo(req.requestedAt)}</span></div>
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-white/5">
-                          {hasUrl && (
-                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all flex items-center justify-center gap-1.5 text-xs text-gray-300">
-                              <Play size={14} className="fill-current" />Play
-                            </button>
-                          )}
-                          {isPending && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-blue-400">
-                                <ThumbsUp size={14} />Approve
-                              </button>
-                              <button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all">
-                                <Ban size={14} className="text-red-400" />
-                              </button>
-                            </>
-                          )}
-                          {isApproved && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "played")} className="flex-1 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-green-400">
-                                <Check size={14} />Played
-                              </button>
-                              <button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all">
-                                <Ban size={14} className="text-red-400" />
-                              </button>
-                            </>
-                          )}
-                          {isRejected && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "pending")} className="flex-1 py-2 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-yellow-400">
-                                <Clock size={14} />Restore
-                              </button>
-                              <button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10 transition-all">
-                                <Trash2 size={14} className="text-gray-500" />
-                              </button>
-                            </>
-                          )}
-                          {isPlayed && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-blue-400">
-                                <ThumbsUp size={14} />Re-add
-                              </button>
-                              <button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10 transition-all">
-                                <Trash2 size={14} className="text-gray-500" />
-                              </button>
-                            </>
-                          )}
+                          {hasUrl && <button onClick={() => handleOpenVideo(req, filterStatus)} className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center gap-1.5 text-xs text-gray-300"><Play size={14} className="fill-current" />Play</button>}
+                          {isPending && <><button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 flex items-center justify-center gap-1.5 text-xs text-blue-400"><ThumbsUp size={14} />Approve</button><button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20"><Ban size={14} className="text-red-400" /></button></>}
+                          {isApproved && <><button onClick={() => updateStatus(req.id, "played")} className="flex-1 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 flex items-center justify-center gap-1.5 text-xs text-green-400"><Check size={14} />Played</button><button onClick={() => updateStatus(req.id, "rejected")} className="py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20"><Ban size={14} className="text-red-400" /></button></>}
+                          {isRejected && <><button onClick={() => updateStatus(req.id, "pending")} className="flex-1 py-2 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 flex items-center justify-center gap-1.5 text-xs text-yellow-400"><Clock size={14} />Restore</button><button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10"><Trash2 size={14} className="text-gray-500" /></button></>}
+                          {isPlayed && <><button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 flex items-center justify-center gap-1.5 text-xs text-blue-400"><ThumbsUp size={14} />Re-add</button><button onClick={() => deleteRequest(req.id)} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-red-500/10"><Trash2 size={14} className="text-gray-500" /></button></>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
+                          <button onClick={() => banPhoneNumber(req.requestedBy, req.id)} className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 flex items-center justify-center gap-1.5 text-[10px] text-gray-500 hover:text-red-400"><UserX size={12} />Ban Phone</button>
+                          <button onClick={() => banSong(req.title, req.artist, req.id)} className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 flex items-center justify-center gap-1.5 text-[10px] text-gray-500 hover:text-orange-400"><MusicOff size={12} />Ban Song</button>
                         </div>
                       </div>
-
-                      {/* Desktop Layout */}
                       <div className="hidden sm:flex items-center gap-4">
-                        <div className="w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 hidden md:flex">
-                          <span className="text-sm font-medium text-gray-500">{index + 1}</span>
-                        </div>
+                        <div className="w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 hidden md:flex"><span className="text-sm font-medium text-gray-500">{index + 1}</span></div>
                         <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
                           {req.thumbnail ? <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Music size={24} className="text-gray-600" /></div>}
-                          {hasUrl && !isCurrentlyPlaying && (
-                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <Play size={24} className="text-white fill-white" />
-                            </button>
-                          )}
-                          {isCurrentlyPlaying && (
-                            <button onClick={() => setIsMinimized(false)} className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
-                              <div className="flex gap-0.5">
-                                {[0, 150, 300].map((delay) => <div key={delay} className="w-1 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: `${delay}ms` }} />)}
-                              </div>
-                            </button>
-                          )}
+                          {hasUrl && !isCurrentlyPlaying && <button onClick={() => handleOpenVideo(req, filterStatus)} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Play size={24} className="text-white fill-white" /></button>}
+                          {isCurrentlyPlaying && <button onClick={() => setIsMinimized(false)} className="absolute inset-0 bg-pink-500/30 flex items-center justify-center"><div className="flex gap-0.5">{[0, 150, 300].map((d) => <div key={d} className="w-1 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />)}</div></button>}
                         </div>
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1 overflow-hidden">
-                              {hasUrl ? (
-                                <button onClick={() => handleOpenVideo(req, filterStatus)} className="block w-full text-left group/title">
-                                  <h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">
-                                    {req.title}
-                                    <ExternalLink size={14} className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
-                                  </h3>
-                                </button>
-                              ) : (
-                                <h3 className="font-semibold text-white truncate">{req.title}</h3>
-                              )}
-                              <p className="text-sm text-gray-400 truncate">{req.artist}</p>
-                            </div>
-                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
-                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
-                            </span>
+                            <div className="min-w-0 flex-1 overflow-hidden">{hasUrl ? <button onClick={() => handleOpenVideo(req, filterStatus)} className="block w-full text-left group/title"><h3 className="font-semibold text-white truncate group-hover/title:text-pink-400 transition-colors">{req.title}<ExternalLink size={14} className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" /></h3></button> : <h3 className="font-semibold text-white truncate">{req.title}</h3>}<p className="text-sm text-gray-400 truncate">{req.artist}</p></div>
+                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>{isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}</span>
                           </div>
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              {req.genre && req.genre !== "Unknown" && <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">{req.genre}</span>}
-                              {req.explicit && req.explicit !== "Unknown" && (
-                                <span className={`px-2 py-0.5 rounded-md text-xs border ${req.explicit === "Explicit" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-green-500/10 text-green-400 border-green-500/20"}`}>
-                                  {req.explicit === "Explicit" ? "Explicit" : "Clean"}
-                                </span>
-                              )}
-                            </div>
+                            <div className="flex items-center gap-1.5">{req.genre && req.genre !== "Unknown" && <span className="px-2 py-0.5 rounded-md text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">{req.genre}</span>}{req.explicit && req.explicit !== "Unknown" && <span className={`px-2 py-0.5 rounded-md text-xs border ${req.explicit === "Explicit" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-green-500/10 text-green-400 border-green-500/20"}`}>{req.explicit === "Explicit" ? "Explicit" : "Clean"}</span>}</div>
                             <span className="text-gray-600">•</span>
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <User size={12} />
-                              <span className="truncate max-w-[100px]">{req.requestedBy}</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <Clock size={12} />
-                              <span>{timeAgo(req.requestedAt)}</span>
-                            </div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500"><User size={12} /><span className="truncate max-w-[100px]">{req.requestedBy}</span></div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500"><Clock size={12} /><span>{timeAgo(req.requestedAt)}</span></div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {hasUrl && (
-                            <button onClick={() => handleOpenVideo(req, filterStatus)} className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" title={`Preview on ${currentPlatform.name}`}>
-                              <ExternalLink size={16} className="text-gray-400" />
-                            </button>
-                          )}
-                          {isPending && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all" title="Approve">
-                                <ThumbsUp size={16} className="text-blue-400" />
-                              </button>
-                              <button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all" title="Reject">
-                                <Ban size={16} className="text-red-400" />
-                              </button>
-                            </>
-                          )}
-                          {isApproved && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "played")} className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 transition-all" title="Mark as Played">
-                                <Check size={16} className="text-green-400" />
-                              </button>
-                              <button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all" title="Reject">
-                                <Ban size={16} className="text-red-400" />
-                              </button>
-                            </>
-                          )}
-                          {isRejected && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "pending")} className="p-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-all" title="Restore to Pending">
-                                <Clock size={16} className="text-yellow-400" />
-                              </button>
-                              <button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all" title="Delete">
-                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
-                              </button>
-                            </>
-                          )}
-                          {isPlayed && (
-                            <>
-                              <button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all" title="Move to Approved">
-                                <ThumbsUp size={16} className="text-blue-400" />
-                              </button>
-                              <button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 transition-all" title="Delete">
-                                <Trash2 size={16} className="text-gray-500 hover:text-red-400" />
-                              </button>
-                            </>
-                          )}
+                          {hasUrl && <button onClick={() => handleOpenVideo(req, filterStatus)} className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10" title={`Preview on ${currentPlatform.name}`}><ExternalLink size={16} className="text-gray-400" /></button>}
+                          {isPending && <><button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20" title="Approve"><ThumbsUp size={16} className="text-blue-400" /></button><button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20" title="Reject"><Ban size={16} className="text-red-400" /></button></>}
+                          {isApproved && <><button onClick={() => updateStatus(req.id, "played")} className="p-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20" title="Mark as Played"><Check size={16} className="text-green-400" /></button><button onClick={() => updateStatus(req.id, "rejected")} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20" title="Reject"><Ban size={16} className="text-red-400" /></button></>}
+                          {isRejected && <><button onClick={() => updateStatus(req.id, "pending")} className="p-2.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20" title="Restore"><Clock size={16} className="text-yellow-400" /></button><button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10" title="Delete"><Trash2 size={16} className="text-gray-500 hover:text-red-400" /></button></>}
+                          {isPlayed && <><button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20" title="Move to Approved"><ThumbsUp size={16} className="text-blue-400" /></button><button onClick={() => deleteRequest(req.id)} className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/10" title="Delete"><Trash2 size={16} className="text-gray-500 hover:text-red-400" /></button></>}
+                          <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => banPhoneNumber(req.requestedBy, req.id)} className="p-2 rounded-lg hover:bg-red-500/10" title="Ban phone"><UserX size={14} className="text-gray-500 hover:text-red-400" /></button>
+                            <button onClick={() => banSong(req.title, req.artist, req.id)} className="p-2 rounded-lg hover:bg-orange-500/10" title="Ban song"><MusicOff size={14} className="text-gray-500 hover:text-orange-400" /></button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1439,15 +980,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <footer className="mt-8 sm:mt-12 pt-4 sm:pt-6 border-t border-white/5 text-center">
-          <p className="text-[10px] sm:text-xs text-gray-600">TextMyTrack • Built for DJs who take requests</p>
-        </footer>
+        <footer className="mt-8 sm:mt-12 pt-4 sm:pt-6 border-t border-white/5 text-center"><p className="text-[10px] sm:text-xs text-gray-600">TextMyTrack • Built for DJs who take requests</p></footer>
       </div>
-
-      <style jsx global>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      <style jsx global>{`.scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
     </main>
   );
 }
