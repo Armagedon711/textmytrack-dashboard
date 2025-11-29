@@ -817,7 +817,7 @@ export default function Dashboard() {
     if (plan === "headliner" && djProfile.twilio_number) {
       return {
         type: "dedicated",
-        label: "Your Dedicated Line",
+        label: "Dedicated Line",
         text: formatPhoneNumber(djProfile.twilio_number),
       };
     } else {
