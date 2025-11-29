@@ -836,8 +836,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* YouTube Player - Use h-px when minimized instead of h-0 to prevent YouTube from pausing */}
-              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px overflow-hidden" : "aspect-video"}`}>
+              {/* YouTube Player - Use h-px when minimized instead of h-0 to prevent YouTube from pausing, opacity-0 to hide visually */}
+              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px opacity-0 pointer-events-none" : "aspect-video"}`}>
                 <div id="youtube-player" className="w-full h-full" />
               </div>
 
