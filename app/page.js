@@ -268,7 +268,8 @@ export default function Dashboard() {
         setTimeout(() => {
           setCurrentPlayingRequest(nextSong);
           setVideoModal(nextSong.youtube_video_id);
-          currentVideoId.current = nextSong.youtube_video_id;
+          // Don't set currentVideoId.current here - let the useEffect handle it
+          // Setting it here causes the useEffect to skip because it thinks the video is already playing
           isTransitioning.current = false;
         }, 100);
       } else {
@@ -520,7 +521,7 @@ export default function Dashboard() {
         setTimeout(() => {
           setCurrentPlayingRequest(nextSong);
           setVideoModal(nextSong.youtube_video_id);
-          currentVideoId.current = nextSong.youtube_video_id;
+          // Don't set currentVideoId.current here - let the useEffect handle it
         }, 100);
       } else {
         handleCloseModal();
