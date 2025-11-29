@@ -29,8 +29,17 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  Settings,
+  Save,
+  AlertCircle,
+  Tag,
+  Crown,
+  Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+// Universal number for Trial and Pro plans
+const UNIVERSAL_NUMBER = "(855) 710-5533";
 
 // Platform configuration
 const PLATFORMS = {
@@ -121,6 +130,31 @@ const TABS = [
   },
 ];
 
+// Plan badge configuration
+const PLAN_CONFIG = {
+  trial: {
+    label: "Trial",
+    icon: Sparkles,
+    bgColor: "bg-gray-500/20",
+    textColor: "text-gray-400",
+    borderColor: "border-gray-500/30",
+  },
+  pro: {
+    label: "Pro",
+    icon: CheckCircle2,
+    bgColor: "bg-blue-500/20",
+    textColor: "text-blue-400",
+    borderColor: "border-blue-500/30",
+  },
+  headliner: {
+    label: "Headliner",
+    icon: Crown,
+    bgColor: "bg-gradient-to-r from-yellow-500/20 to-orange-500/20",
+    textColor: "text-yellow-400",
+    borderColor: "border-yellow-500/30",
+  },
+};
+
 export default function Dashboard() {
   const supabase = supabaseBrowserClient();
   const router = useRouter();
@@ -132,6 +166,13 @@ export default function Dashboard() {
   const [profileError, setProfileError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
+
+  // Settings modal state
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTag, setSettingsTag] = useState("");
+  const [tagError, setTagError] = useState("");
+  const [tagSuccess, setTagSuccess] = useState("");
+  const [savingTag, setSavingTag] = useState(false);
 
   // Video modal state
   const [videoModal, setVideoModal] = useState(null);
@@ -178,6 +219,13 @@ export default function Dashboard() {
   useEffect(() => {
     playbackTabRef.current = playbackTab;
   }, [playbackTab]);
+
+  // Initialize settings tag when profile loads
+  useEffect(() => {
+    if (djProfile?.tag) {
+      setSettingsTag(djProfile.tag);
+    }
+  }, [djProfile]);
 
   // Helper functions
   function getPlatformUrl(request) {
@@ -267,8 +315,6 @@ export default function Dashboard() {
         setTimeout(() => {
           setCurrentPlayingRequest(nextSong);
           setVideoModal(nextSong.youtube_video_id);
-          // Don't set currentVideoId.current here - let the useEffect handle it
-          // Setting it here causes the useEffect to skip because it thinks the video is already playing
           isTransitioning.current = false;
         }, 100);
       } else {
@@ -324,7 +370,6 @@ export default function Dashboard() {
     }
 
     // If player already exists and is ready, just load the new video
-    // Do this BEFORE creating isCancelled to avoid cleanup interference
     if (playerRef.current && playerReady.current) {
       currentVideoId.current = videoModal;
       try {
@@ -333,12 +378,10 @@ export default function Dashboard() {
           startSeconds: 0,
         });
         
-        // Retry playVideo multiple times to ensure it starts
         const forcePlay = (attempts = 0) => {
           if (attempts > 5 || !playerRef.current || currentVideoId.current !== videoModal) return;
           try {
             const state = playerRef.current.getPlayerState();
-            // If not playing (1) or buffering (3), try to play
             if (state !== 1 && state !== 3) {
               playerRef.current.playVideo();
             }
@@ -350,21 +393,17 @@ export default function Dashboard() {
         setIsPlaying(true);
       } catch (e) {
         console.error("Error loading video:", e);
-        // Reset player state to force recreation
         playerReady.current = false;
       }
-      // Return without creating isCancelled - existing event handlers should continue working
       return;
     }
 
-    // For new player creation, use isCancelled to prevent stale callbacks
     let timeoutId;
     let isCancelled = false;
 
     const initPlayer = () => {
       if (isCancelled) return;
 
-      // Destroy existing player if it exists but isn't ready
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -375,7 +414,6 @@ export default function Dashboard() {
 
       const container = document.getElementById("youtube-player");
       if (!container) {
-        // Retry if container not found yet
         timeoutId = setTimeout(initPlayer, 100);
         return;
       }
@@ -400,16 +438,14 @@ export default function Dashboard() {
             if (isCancelled) return;
             playerReady.current = true;
             
-            // Force play the video
             try {
-              event.target.mute(); // Ensure muted for autoplay policy
+              event.target.mute();
               event.target.playVideo();
             } catch (e) {
               console.error("Error starting playback:", e);
             }
             setIsPlaying(true);
 
-            // Unmute after a short delay if user preference is unmuted
             if (!isMutedRef.current) {
               setTimeout(() => {
                 if (isCancelled) return;
@@ -421,20 +457,16 @@ export default function Dashboard() {
           },
 
           onStateChange: (event) => {
-            // Don't check isCancelled here - we want this to work even when reusing player
-            // ENDED = 0
             if (event.data === 0) {
               console.log("Video ended - triggering next song");
-              // Use ref to always get latest function
               if (handleVideoEndRef.current) {
                 handleVideoEndRef.current();
               }
-            } else if (event.data === 1) { // PLAYING
+            } else if (event.data === 1) {
               setIsPlaying(true);
-            } else if (event.data === 2) { // PAUSED
+            } else if (event.data === 2) {
               setIsPlaying(false);
-            } else if (event.data === -1) { // UNSTARTED
-              // Video failed to autoplay, try again
+            } else if (event.data === -1) {
               try {
                 event.target.playVideo();
               } catch (e) {}
@@ -444,7 +476,6 @@ export default function Dashboard() {
           onError: (event) => {
             if (isCancelled) return;
             console.error("YouTube player error:", event.data);
-            // Skip to next on error
             setTimeout(() => {
               if (!isCancelled && handleVideoEndRef.current) {
                 handleVideoEndRef.current();
@@ -455,7 +486,6 @@ export default function Dashboard() {
       });
     };
 
-    // Wait for YT API
     if (window.YT && window.YT.Player) {
       timeoutId = setTimeout(initPlayer, 100);
     } else {
@@ -466,14 +496,13 @@ export default function Dashboard() {
       };
     }
 
-    // Cleanup function - only affects new player creation path
     return () => {
       isCancelled = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
     };
-  }, [videoModal]); // Only depend on videoModal
+  }, [videoModal]);
 
   // Update mute state
   useEffect(() => {
@@ -539,7 +568,6 @@ export default function Dashboard() {
         setTimeout(() => {
           setCurrentPlayingRequest(nextSong);
           setVideoModal(nextSong.youtube_video_id);
-          // Don't set currentVideoId.current here - let the useEffect handle it
         }, 100);
       } else {
         handleCloseModal();
@@ -555,6 +583,52 @@ export default function Dashboard() {
       updateStatusDirect(currentPlaying.id, "played");
     }
     handleCloseModal();
+  }
+
+  // Save tag function
+  async function handleSaveTag() {
+    setTagError("");
+    setTagSuccess("");
+    
+    if (!settingsTag.trim()) {
+      setTagError("Tag cannot be empty");
+      return;
+    }
+
+    // Basic validation - alphanumeric and spaces only, 2-30 chars
+    const tagRegex = /^[a-zA-Z0-9\s]{2,30}$/;
+    if (!tagRegex.test(settingsTag.trim())) {
+      setTagError("Tag must be 2-30 characters, letters, numbers, and spaces only");
+      return;
+    }
+
+    setSavingTag(true);
+
+    try {
+      const res = await fetch("/api/dj-tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          dj_id: user.id, 
+          tag: settingsTag.trim() 
+        }),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        setTagSuccess("Tag updated successfully!");
+        setDjProfile(prev => ({ ...prev, tag: settingsTag.trim() }));
+        setTimeout(() => setTagSuccess(""), 3000);
+      } else {
+        setTagError(result.error || "Failed to update tag");
+      }
+    } catch (err) {
+      console.error("Error saving tag:", err);
+      setTagError("Error saving tag. Please try again.");
+    } finally {
+      setSavingTag(false);
+    }
   }
 
   // Data fetching
@@ -734,6 +808,30 @@ export default function Dashboard() {
     return phoneNumber;
   }
 
+  // Get request line display based on plan
+  function getRequestLineDisplay() {
+    if (!djProfile) return { type: "loading", text: "Loading..." };
+    
+    const plan = djProfile.plan?.toLowerCase() || "trial";
+    
+    if (plan === "headliner" && djProfile.twilio_number) {
+      return {
+        type: "dedicated",
+        label: "Your Dedicated Line",
+        text: formatPhoneNumber(djProfile.twilio_number),
+      };
+    } else {
+      // Trial or Pro - use universal number with tag
+      const tag = djProfile.tag || "DJ";
+      return {
+        type: "shared",
+        label: "Request Line",
+        text: `Text "${tag}" to ${UNIVERSAL_NUMBER}`,
+        tag: tag,
+      };
+    }
+  }
+
   const filteredRequests = requests.filter((req) => {
     if (filterStatus === "all") return true;
     if (filterStatus === "pending") {
@@ -751,6 +849,8 @@ export default function Dashboard() {
   };
 
   const currentPlatform = PLATFORMS[selectedPlatform];
+  const requestLineInfo = getRequestLineDisplay();
+  const currentPlan = PLAN_CONFIG[djProfile?.plan?.toLowerCase()] || PLAN_CONFIG.trial;
 
   // Calculate next song for UI display
   const nextSong = (() => {
@@ -778,6 +878,161 @@ export default function Dashboard() {
         <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[120px]" />
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
+            onClick={() => setShowSettings(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div 
+              className="w-full max-w-md bg-[#16161f] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="p-4 sm:p-6 border-b border-white/5 bg-[#12121a]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                      <Settings size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Settings</h2>
+                      <p className="text-xs text-gray-500">Manage your DJ profile</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowSettings(false)}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+                  >
+                    <X size={18} className="text-gray-400" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-4 sm:p-6 space-y-6">
+                {/* Plan Badge */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${currentPlan.bgColor} ${currentPlan.borderColor} border`}>
+                      <currentPlan.icon size={18} className={currentPlan.textColor} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wider">Current Plan</p>
+                      <p className={`font-semibold ${currentPlan.textColor}`}>{currentPlan.label}</p>
+                    </div>
+                  </div>
+                  {djProfile?.plan?.toLowerCase() !== "headliner" && (
+                    <button className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-medium hover:brightness-110 transition-all">
+                      Upgrade
+                    </button>
+                  )}
+                </div>
+
+                {/* Tag Setting - Only for Trial/Pro */}
+                {djProfile?.plan?.toLowerCase() !== "headliner" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Tag size={16} className="text-gray-400" />
+                      <label className="text-sm font-medium text-gray-300">Your DJ Tag</label>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      This is how guests will request songs from you. They'll text your tag to the universal number.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={settingsTag}
+                        onChange={(e) => {
+                          setSettingsTag(e.target.value);
+                          setTagError("");
+                          setTagSuccess("");
+                        }}
+                        placeholder="e.g., DJ Joey"
+                        className="flex-1 px-4 py-3 rounded-lg bg-[#1b1b2e] border border-[#2a2a40] text-white placeholder-gray-500 focus:outline-none focus:border-pink-500 transition-all"
+                        maxLength={30}
+                      />
+                      <button
+                        onClick={handleSaveTag}
+                        disabled={savingTag || settingsTag === djProfile?.tag}
+                        className={`px-4 py-3 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                          savingTag || settingsTag === djProfile?.tag
+                            ? "bg-white/5 text-gray-500 cursor-not-allowed"
+                            : "bg-pink-500 hover:bg-pink-600 text-white"
+                        }`}
+                      >
+                        <Save size={16} />
+                        {savingTag ? "..." : "Save"}
+                      </button>
+                    </div>
+                    
+                    {/* Tag Preview */}
+                    <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <p className="text-xs text-blue-400 mb-1">Preview:</p>
+                      <p className="text-sm text-white">
+                        Text "<span className="font-semibold text-pink-400">{settingsTag || "DJ"}</span>" to {UNIVERSAL_NUMBER}
+                      </p>
+                    </div>
+
+                    {/* Error/Success Messages */}
+                    {tagError && (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                        <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+                        <p className="text-sm text-red-400">{tagError}</p>
+                      </div>
+                    )}
+                    {tagSuccess && (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                        <CheckCircle2 size={16} className="text-green-400 flex-shrink-0" />
+                        <p className="text-sm text-green-400">{tagSuccess}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Headliner dedicated number info */}
+                {djProfile?.plan?.toLowerCase() === "headliner" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Phone size={16} className="text-yellow-400" />
+                      <label className="text-sm font-medium text-gray-300">Your Dedicated Line</label>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20">
+                      <p className="text-2xl font-bold text-white">
+                        {formatPhoneNumber(djProfile.twilio_number)}
+                      </p>
+                      <p className="text-xs text-yellow-400 mt-1">
+                        Guests text this number directly to request songs
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email (read-only) */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-400">Email</label>
+                  <div className="px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-gray-400">
+                    {user?.email || "Not available"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 sm:p-6 border-t border-white/5 bg-[#12121a]">
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-all"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* PERSISTENT PLAYER SYSTEM */}
       {videoModal && (
@@ -835,7 +1090,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* YouTube Player - Use h-px when minimized instead of h-0 to prevent YouTube from pausing, opacity-0 to hide visually */}
+              {/* YouTube Player */}
               <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px opacity-0 pointer-events-none" : "aspect-video"}`}>
                 <div id="youtube-player" className="w-full h-full" />
               </div>
@@ -881,7 +1136,6 @@ export default function Dashboard() {
                 <div className="bg-[#12121a] border-t border-white/10">
                   <div className="max-w-6xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
                     <div className="flex items-center gap-3">
-                      {/* Thumbnail */}
                       <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
                         {currentPlayingRequest.thumbnail ? (
                           <img src={currentPlayingRequest.thumbnail} alt={currentPlayingRequest.title} className="w-full h-full object-cover" />
@@ -899,13 +1153,11 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Song Info */}
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsMinimized(false)}>
                         <h4 className="font-semibold text-white text-sm truncate">{currentPlayingRequest.title}</h4>
                         <p className="text-xs text-gray-400 truncate">{currentPlayingRequest.artist}</p>
                       </div>
 
-                      {/* Controls - includes skip button */}
                       <div className="flex items-center gap-1 sm:gap-2">
                         <button onClick={togglePlayPause} className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
                           {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white" />}
@@ -913,7 +1165,6 @@ export default function Dashboard() {
                         <button onClick={() => setIsMuted(!isMuted)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isMuted ? "bg-white/5 text-gray-400" : "bg-green-500/20 text-green-400"}`}>
                           {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
-                        {/* Skip button - always visible if there's a next song */}
                         {nextSong && (
                           <button onClick={handleSkipToNext} className="p-1.5 sm:p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all" title={`Skip to: ${nextSong.title}`}>
                             <SkipForward size={16} />
@@ -928,7 +1179,6 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Up Next Preview */}
                     {nextSong && (
                       <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
                         <span>Up next:</span>
@@ -960,6 +1210,14 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Settings Button */}
+            <button 
+              onClick={() => setShowSettings(true)} 
+              className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2"
+            >
+              <Settings size={16} />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
             <button onClick={handleLogout} className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2">
               <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
@@ -969,19 +1227,30 @@ export default function Dashboard() {
 
         {/* Mobile Info Cards */}
         <div className="lg:hidden space-y-3 mb-4">
-          {/* DJ Info Banner */}
+          {/* DJ Info Banner - Updated for plan-based display */}
           <div className="p-3 rounded-xl bg-[#12121a] border border-white/5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Phone size={16} className="text-blue-400" />
-                <span className="text-sm text-gray-400">Request Line:</span>
-                {djProfile ? (
-                  <span className="text-sm font-semibold text-white">{formatPhoneNumber(djProfile.twilio_number)}</span>
-                ) : (
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Phone size={16} className={requestLineInfo.type === "dedicated" ? "text-yellow-400" : "text-blue-400"} />
+                {requestLineInfo.type === "loading" ? (
                   <span className="text-sm text-gray-500">Loading...</span>
+                ) : requestLineInfo.type === "dedicated" ? (
+                  <>
+                    <span className="text-xs text-gray-500">Your Line:</span>
+                    <span className="text-sm font-semibold text-white">{requestLineInfo.text}</span>
+                  </>
+                ) : (
+                  <span className="text-xs sm:text-sm text-gray-300 truncate">
+                    Text "<span className="font-semibold text-pink-400">{requestLineInfo.tag}</span>" to {UNIVERSAL_NUMBER}
+                  </span>
                 )}
               </div>
-              <span className="text-xs text-green-400 font-medium">● Live</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${currentPlan.bgColor} ${currentPlan.textColor} ${currentPlan.borderColor} border`}>
+                  {currentPlan.label}
+                </span>
+                <span className="text-xs text-green-400 font-medium">● Live</span>
+              </div>
             </div>
           </div>
 
@@ -1076,25 +1345,45 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
           {/* Sidebar - Desktop Only */}
           <div className="hidden lg:block lg:col-span-1 space-y-6">
+            {/* Request Line Card - Updated for plan-based display */}
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  requestLineInfo.type === "dedicated" 
+                    ? "bg-gradient-to-br from-yellow-500 to-orange-500" 
+                    : "bg-gradient-to-br from-blue-500 to-cyan-500"
+                }`}>
                   <Phone size={18} className="text-white" />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Your Request Line</p>
-                  {djProfile ? (
-                    <p className="text-lg font-bold text-white">{formatPhoneNumber(djProfile.twilio_number)}</p>
-                  ) : profileError ? (
-                    <p className="text-sm text-red-400">{profileError}</p>
-                  ) : (
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">
+                      {requestLineInfo.label}
+                    </p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${currentPlan.bgColor} ${currentPlan.textColor} ${currentPlan.borderColor} border`}>
+                      {currentPlan.label}
+                    </span>
+                  </div>
+                  {requestLineInfo.type === "loading" ? (
                     <p className="text-sm text-gray-500">Loading...</p>
+                  ) : requestLineInfo.type === "dedicated" ? (
+                    <p className="text-lg font-bold text-white">{requestLineInfo.text}</p>
+                  ) : (
+                    <div className="mt-1">
+                      <p className="text-sm text-gray-300">
+                        Text "<span className="font-bold text-pink-400">{requestLineInfo.tag}</span>"
+                      </p>
+                      <p className="text-sm text-gray-300">to <span className="font-semibold text-white">{UNIVERSAL_NUMBER}</span></p>
+                    </div>
                   )}
                 </div>
               </div>
               <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
                 <span className="text-xs text-green-400 font-medium">● Accepting Requests</span>
               </div>
+              {profileError && (
+                <p className="text-sm text-red-400 mt-2">{profileError}</p>
+              )}
             </div>
 
             <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
@@ -1152,9 +1441,9 @@ export default function Dashboard() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Tab Navigation - Desktop: flex-wrap, Mobile: horizontal scroll */}
+            {/* Tab Navigation */}
             <div className="mb-4 sm:mb-6">
-              {/* Desktop Tabs - flex wrap, no arrows */}
+              {/* Desktop Tabs */}
               <div className="hidden sm:flex items-center gap-2 flex-wrap">
                 {TABS.map((tab) => {
                   const TabIcon = tab.icon;
@@ -1175,7 +1464,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Mobile Tabs - horizontal scroll */}
+              {/* Mobile Tabs */}
               <div className="sm:hidden flex items-center gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
                 {TABS.map((tab) => {
                   const TabIcon = tab.icon;
@@ -1235,7 +1524,7 @@ export default function Dashboard() {
                   const isPending = req.status === "pending";
                   const isApproved = req.status === "approved";
                   const isRejected = req.status === "rejected";
-                  const isPlayed = req.status === "played";
+                  const isPlayedStatus = req.status === "played";
 
                   return (
                     <div key={req.id} className={`group p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${isCurrentlyPlaying ? "bg-pink-500/10 border-pink-500/30" : "bg-[#12121a] border-white/5 hover:border-white/10"}`}>
@@ -1263,8 +1552,8 @@ export default function Dashboard() {
                                 <h3 className="font-semibold text-white text-sm leading-tight truncate" onClick={() => hasUrl && handleOpenVideo(req, filterStatus)}>{req.title}</h3>
                                 <p className="text-xs text-gray-400 truncate mt-0.5">{req.artist}</p>
                               </div>
-                              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
-                                {isCurrentlyPlaying ? "▶" : isPlayed ? "✓" : isApproved ? "👍" : isRejected ? "✕" : "⏳"}
+                              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayedStatus ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                                {isCurrentlyPlaying ? "▶" : isPlayedStatus ? "✓" : isApproved ? "👍" : isRejected ? "✕" : "⏳"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
@@ -1311,7 +1600,7 @@ export default function Dashboard() {
                               </button>
                             </>
                           )}
-                          {isPlayed && (
+                          {isPlayedStatus && (
                             <>
                               <button onClick={() => updateStatus(req.id, "approved")} className="flex-1 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all flex items-center justify-center gap-1.5 text-xs text-blue-400">
                                 <ThumbsUp size={14} />Re-add
@@ -1359,8 +1648,8 @@ export default function Dashboard() {
                               )}
                               <p className="text-sm text-gray-400 truncate">{req.artist}</p>
                             </div>
-                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayed ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
-                              {isCurrentlyPlaying ? "Playing" : isPlayed ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
+                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : isPlayedStatus ? "bg-green-500/10 text-green-400" : isApproved ? "bg-blue-500/10 text-blue-400" : isRejected ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                              {isCurrentlyPlaying ? "Playing" : isPlayedStatus ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -1419,7 +1708,7 @@ export default function Dashboard() {
                               </button>
                             </>
                           )}
-                          {isPlayed && (
+                          {isPlayedStatus && (
                             <>
                               <button onClick={() => updateStatus(req.id, "approved")} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all" title="Move to Approved">
                                 <ThumbsUp size={16} className="text-blue-400" />
