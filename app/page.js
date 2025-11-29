@@ -302,8 +302,9 @@ export default function Dashboard() {
     }
   }, []);
 
-  // YouTube Player Hook - FIXED: No handleVideoEnd in dependencies
+  // YouTube Player Hook - FIXED: Proper cleanup, loadVideoById for existing players
   useEffect(() => {
+    // Cleanup when modal closes
     if (!videoModal) {
       playerReady.current = false;
       currentVideoId.current = null;
@@ -321,11 +322,30 @@ export default function Dashboard() {
     if (currentVideoId.current === videoModal && playerRef.current && playerReady.current) {
       return;
     }
-    
-    currentVideoId.current = videoModal;
+
+    let timeoutId;
+    let isCancelled = false;
 
     const initPlayer = () => {
-      // Destroy existing player
+      if (isCancelled) return;
+
+      // If player already exists and is ready, just load the new video
+      if (playerRef.current && playerReady.current) {
+        try {
+          currentVideoId.current = videoModal;
+          playerRef.current.loadVideoById({
+            videoId: videoModal,
+            startSeconds: 0,
+          });
+          setIsPlaying(true);
+          return;
+        } catch (e) {
+          console.error("Error loading video:", e);
+          // Fall through to recreate player
+        }
+      }
+
+      // Destroy existing player if it exists but isn't ready
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -335,7 +355,13 @@ export default function Dashboard() {
       }
 
       const container = document.getElementById("youtube-player");
-      if (!container) return;
+      if (!container) {
+        // Retry if container not found yet
+        timeoutId = setTimeout(initPlayer, 100);
+        return;
+      }
+
+      currentVideoId.current = videoModal;
 
       playerRef.current = new window.YT.Player("youtube-player", {
         videoId: videoModal,
@@ -348,17 +374,26 @@ export default function Dashboard() {
           iv_load_policy: 3,
           fs: 1,
           controls: 1,
-          // Remove playlist param - it can cause looping issues
+          origin: typeof window !== "undefined" ? window.location.origin : undefined,
         },
         events: {
           onReady: (event) => {
+            if (isCancelled) return;
             playerReady.current = true;
-            event.target.playVideo();
+            
+            // Force play the video
+            try {
+              event.target.mute(); // Ensure muted for autoplay policy
+              event.target.playVideo();
+            } catch (e) {
+              console.error("Error starting playback:", e);
+            }
             setIsPlaying(true);
 
             // Unmute after a short delay if user preference is unmuted
             if (!isMutedRef.current) {
               setTimeout(() => {
+                if (isCancelled) return;
                 try {
                   event.target.unMute();
                 } catch (e) {}
@@ -367,6 +402,7 @@ export default function Dashboard() {
           },
 
           onStateChange: (event) => {
+            if (isCancelled) return;
             // ENDED = 0
             if (event.data === 0) {
               console.log("Video ended - triggering next song");
@@ -378,14 +414,20 @@ export default function Dashboard() {
               setIsPlaying(true);
             } else if (event.data === 2) { // PAUSED
               setIsPlaying(false);
+            } else if (event.data === -1) { // UNSTARTED
+              // Video failed to autoplay, try again
+              try {
+                event.target.playVideo();
+              } catch (e) {}
             }
           },
 
           onError: (event) => {
+            if (isCancelled) return;
             console.error("YouTube player error:", event.data);
             // Skip to next on error
             setTimeout(() => {
-              if (handleVideoEndRef.current) {
+              if (!isCancelled && handleVideoEndRef.current) {
                 handleVideoEndRef.current();
               }
             }, 1000);
@@ -396,13 +438,23 @@ export default function Dashboard() {
 
     // Wait for YT API
     if (window.YT && window.YT.Player) {
-      setTimeout(initPlayer, 150);
+      timeoutId = setTimeout(initPlayer, 100);
     } else {
       window.onYouTubeIframeAPIReady = () => {
-        setTimeout(initPlayer, 150);
+        if (!isCancelled) {
+          timeoutId = setTimeout(initPlayer, 100);
+        }
       };
     }
-  }, [videoModal]); // Only depend on videoModal, not handleVideoEnd
+
+    // Cleanup function
+    return () => {
+      isCancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [videoModal]); // Only depend on videoModal
 
   // Update mute state
   useEffect(() => {
