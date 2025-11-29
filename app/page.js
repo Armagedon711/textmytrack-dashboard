@@ -303,7 +303,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  // YouTube Player Hook - FIXED: Proper cleanup, loadVideoById for existing players
+  // YouTube Player Hook - FIXED: Handle player reuse correctly
   useEffect(() => {
     // Cleanup when modal closes
     if (!videoModal) {
@@ -324,27 +324,46 @@ export default function Dashboard() {
       return;
     }
 
+    // If player already exists and is ready, just load the new video
+    // Do this BEFORE creating isCancelled to avoid cleanup interference
+    if (playerRef.current && playerReady.current) {
+      currentVideoId.current = videoModal;
+      try {
+        playerRef.current.loadVideoById({
+          videoId: videoModal,
+          startSeconds: 0,
+        });
+        
+        // Retry playVideo multiple times to ensure it starts
+        const forcePlay = (attempts = 0) => {
+          if (attempts > 5 || !playerRef.current || currentVideoId.current !== videoModal) return;
+          try {
+            const state = playerRef.current.getPlayerState();
+            // If not playing (1) or buffering (3), try to play
+            if (state !== 1 && state !== 3) {
+              playerRef.current.playVideo();
+            }
+          } catch (e) {}
+          setTimeout(() => forcePlay(attempts + 1), 200 * (attempts + 1));
+        };
+        
+        setTimeout(() => forcePlay(0), 100);
+        setIsPlaying(true);
+      } catch (e) {
+        console.error("Error loading video:", e);
+        // Reset player state to force recreation
+        playerReady.current = false;
+      }
+      // Return without creating isCancelled - existing event handlers should continue working
+      return;
+    }
+
+    // For new player creation, use isCancelled to prevent stale callbacks
     let timeoutId;
     let isCancelled = false;
 
     const initPlayer = () => {
       if (isCancelled) return;
-
-      // If player already exists and is ready, just load the new video
-      if (playerRef.current && playerReady.current) {
-        try {
-          currentVideoId.current = videoModal;
-          playerRef.current.loadVideoById({
-            videoId: videoModal,
-            startSeconds: 0,
-          });
-          setIsPlaying(true);
-          return;
-        } catch (e) {
-          console.error("Error loading video:", e);
-          // Fall through to recreate player
-        }
-      }
 
       // Destroy existing player if it exists but isn't ready
       if (playerRef.current) {
@@ -403,7 +422,7 @@ export default function Dashboard() {
           },
 
           onStateChange: (event) => {
-            if (isCancelled) return;
+            // Don't check isCancelled here - we want this to work even when reusing player
             // ENDED = 0
             if (event.data === 0) {
               console.log("Video ended - triggering next song");
@@ -448,7 +467,7 @@ export default function Dashboard() {
       };
     }
 
-    // Cleanup function
+    // Cleanup function - only affects new player creation path
     return () => {
       isCancelled = true;
       if (timeoutId) {
@@ -817,8 +836,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* YouTube Player */}
-              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-0 overflow-hidden" : "aspect-video"}`}>
+              {/* YouTube Player - Use h-px when minimized instead of h-0 to prevent YouTube from pausing */}
+              <div className={`bg-black transition-all duration-300 ${isMinimized ? "h-px overflow-hidden" : "aspect-video"}`}>
                 <div id="youtube-player" className="w-full h-full" />
               </div>
 
