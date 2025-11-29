@@ -18,7 +18,6 @@ import {
   ListMusic,
   Disc3,
   ExternalLink,
-  RefreshCw,
   CheckCircle2,
   Circle,
   SkipForward,
@@ -961,9 +960,6 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <button onClick={() => user && fetchRequests(user.id)} className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all" title="Refresh">
-              <RefreshCw size={16} className="text-gray-400" />
-            </button>
             <button onClick={handleLogout} className="p-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm font-medium text-gray-300 flex items-center gap-2">
               <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
