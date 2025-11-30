@@ -85,7 +85,7 @@ async function findDJByTag(tag) {
   
   const { data, error } = await supabaseAdmin
     .from("dj_profiles")
-    .select("id, preferred_platform, twilio_number, tag, plan, name")
+    .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
     .ilike("tag", tag)
     .maybeSingle();
   
@@ -117,7 +117,7 @@ async function findDJByPhone(phone) {
     
     const { data, error } = await supabaseAdmin
       .from("dj_profiles")
-      .select("id, preferred_platform, twilio_number, tag, plan, name")
+      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
       .eq("twilio_number", variant)
       .maybeSingle();
 
@@ -215,7 +215,8 @@ export async function GET(request) {
           twilio_number: djProfile.twilio_number,
           tag: djProfile.tag,
           plan: djProfile.plan,
-          match_method: matchMethod
+          match_method: matchMethod,
+          accepting_requests: djProfile.accepting_requests !== false // default to true
         });
       } else {
         // Dedicated number not found in database
@@ -291,7 +292,8 @@ export async function GET(request) {
       tag: djProfile.tag,
       plan: djProfile.plan,
       match_method: matchMethod,
-      extracted_tag: extractedTag
+      extracted_tag: extractedTag,
+      accepting_requests: djProfile.accepting_requests !== false // default to true
     });
 
   } catch (err) {

@@ -35,6 +35,7 @@ import {
   Tag,
   Crown,
   Sparkles,
+  Power,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -174,6 +175,10 @@ export default function Dashboard() {
   const [tagSuccess, setTagSuccess] = useState("");
   const [savingTag, setSavingTag] = useState(false);
 
+  // Accepting requests state
+  const [acceptingRequests, setAcceptingRequests] = useState(true);
+  const [togglingAccepting, setTogglingAccepting] = useState(false);
+
   // Video modal state
   const [videoModal, setVideoModal] = useState(null);
   const [currentPlayingRequest, setCurrentPlayingRequest] = useState(null);
@@ -224,6 +229,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (djProfile?.tag) {
       setSettingsTag(djProfile.tag);
+    }
+    // Initialize accepting requests state
+    if (djProfile?.accepting_requests !== undefined) {
+      setAcceptingRequests(djProfile.accepting_requests);
     }
   }, [djProfile]);
 
@@ -628,6 +637,33 @@ export default function Dashboard() {
       setTagError("Error saving tag. Please try again.");
     } finally {
       setSavingTag(false);
+    }
+  }
+
+  // Toggle accepting requests
+  async function toggleAcceptingRequests() {
+    if (togglingAccepting || !user) return;
+    
+    setTogglingAccepting(true);
+    const newValue = !acceptingRequests;
+    
+    try {
+      const { error } = await supabase
+        .from("dj_profiles")
+        .update({ accepting_requests: newValue })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Error updating accepting_requests:", error);
+        return;
+      }
+
+      setAcceptingRequests(newValue);
+      setDjProfile(prev => ({ ...prev, accepting_requests: newValue }));
+    } catch (err) {
+      console.error("Error toggling accepting requests:", err);
+    } finally {
+      setTogglingAccepting(false);
     }
   }
 
@@ -1249,7 +1285,17 @@ export default function Dashboard() {
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${currentPlan.bgColor} ${currentPlan.textColor} ${currentPlan.borderColor} border`}>
                   {currentPlan.label}
                 </span>
-                <span className="text-xs text-green-400 font-medium">● Live</span>
+                <button 
+                  onClick={toggleAcceptingRequests}
+                  disabled={togglingAccepting}
+                  className={`text-xs font-medium px-2 py-0.5 rounded transition-all ${
+                    acceptingRequests 
+                      ? "text-green-400 bg-green-500/10" 
+                      : "text-red-400 bg-red-500/10"
+                  } ${togglingAccepting ? "opacity-50" : ""}`}
+                >
+                  {togglingAccepting ? "..." : acceptingRequests ? "● Live" : "● Paused"}
+                </button>
               </div>
             </div>
           </div>
@@ -1378,9 +1424,20 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-              <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
-                <span className="text-xs text-green-400 font-medium">● Accepting Requests</span>
-              </div>
+              <button 
+                onClick={toggleAcceptingRequests}
+                disabled={togglingAccepting}
+                className={`w-full px-3 py-2 rounded-lg text-center transition-all flex items-center justify-center gap-2 ${
+                  acceptingRequests 
+                    ? "bg-green-500/10 border border-green-500/20 hover:bg-green-500/20" 
+                    : "bg-red-500/10 border border-red-500/20 hover:bg-red-500/20"
+                } ${togglingAccepting ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
+              >
+                <Power size={14} className={acceptingRequests ? "text-green-400" : "text-red-400"} />
+                <span className={`text-xs font-medium ${acceptingRequests ? "text-green-400" : "text-red-400"}`}>
+                  {togglingAccepting ? "..." : acceptingRequests ? "Accepting Requests" : "Requests Paused"}
+                </span>
+              </button>
               {profileError && (
                 <p className="text-sm text-red-400 mt-2">{profileError}</p>
               )}
