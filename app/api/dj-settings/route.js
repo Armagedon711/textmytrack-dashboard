@@ -104,16 +104,25 @@ async function findDJByPhone(phone) {
   if (!phone) return null;
   
   // Try multiple phone formats
+  const digitsOnly = phone.replace(/\D/g, '');
+  const last10 = digitsOnly.slice(-10);
+  
   const phoneVariants = [
-    phone,
-    phone.replace(/\D/g, ''),
-    '+' + phone.replace(/\D/g, ''),
-    '+1' + phone.replace(/\D/g, '').slice(-10),
-    phone.replace(/\D/g, '').slice(-10),
+    phone,                          // Original: +18557104644
+    digitsOnly,                     // 18557104644
+    '+' + digitsOnly,               // +18557104644
+    '+1' + last10,                  // +18557104644
+    last10,                         // 8557104644
+    '1' + last10,                   // 18557104644
   ];
 
+  console.log("findDJByPhone - searching for variants:", phoneVariants);
+
+  // First try exact matches
   for (const variant of phoneVariants) {
     if (!variant) continue;
+    
+    console.log("Trying exact match for:", variant);
     
     const { data, error } = await supabaseAdmin
       .from("dj_profiles")
@@ -121,11 +130,33 @@ async function findDJByPhone(phone) {
       .eq("twilio_number", variant)
       .maybeSingle();
 
+    if (error) {
+      console.error("Error searching for variant", variant, ":", error);
+    }
+
     if (data) {
+      console.log("Found DJ with exact match:", variant, "->", data.id);
       return data;
     }
   }
   
+  // Fallback: search using LIKE with last 10 digits
+  if (last10 && last10.length === 10) {
+    console.log("Trying LIKE search with last 10 digits:", last10);
+    
+    const { data, error } = await supabaseAdmin
+      .from("dj_profiles")
+      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
+      .like("twilio_number", `%${last10}`)
+      .maybeSingle();
+
+    if (data) {
+      console.log("Found DJ with LIKE search:", data.twilio_number, "->", data.id);
+      return data;
+    }
+  }
+  
+  console.log("No DJ found for any phone variant");
   return null;
 }
 
