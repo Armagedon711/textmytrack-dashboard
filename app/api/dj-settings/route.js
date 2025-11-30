@@ -30,29 +30,51 @@ function extractDJTag(message) {
   // Clean the message
   const cleanMessage = message.trim();
   
-  // Pattern to match "DJ [Name]" at the start or after common prefixes
-  // This captures "DJ" followed by one or more words that make up the DJ name
-  const patterns = [
-    // "DJ Joey can you play..." or "DJ Joey play..." or just "DJ Joey"
-    /^(?:hey\s+|hi\s+)?(?:can\s+)?(?:you\s+)?(?:please\s+)?(dj\s+[a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
-    // "DJ Joey, play..." (with comma)
-    /^(?:hey\s+|hi\s+)?(dj\s+[a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s*,/i,
-    // Just extract "DJ [Name]" anywhere in the first part of message
-    /\b(dj\s+[a-zA-Z]+(?:\s+[a-zA-Z]+)?)\b/i,
+  // Words that indicate the DJ name has ended and a request/action is starting
+  const stopWords = [
+    'can', 'could', 'would', 'will', 'please', 'play', 'put', 'drop',
+    'spin', 'throw', 'queue', 'add', 'request', 'i', 'we', 'do', 'you',
+    'want', 'need', 'like', 'love', 'got', 'have', 'get', 'give', 'song',
+    'track', 'music', 'some', 'any', 'the', 'a', 'an', 'this', 'that'
   ];
   
-  for (const pattern of patterns) {
-    const match = cleanMessage.match(pattern);
-    if (match && match[1]) {
-      // Clean up the extracted tag
-      let tag = match[1].trim();
-      // Normalize spacing
-      tag = tag.replace(/\s+/g, ' ');
-      return tag;
+  // First, find "DJ" followed by words
+  const djMatch = cleanMessage.match(/\b(dj\s+\S+(?:\s+\S+)*)/i);
+  
+  if (!djMatch) return null;
+  
+  // Split the matched portion into words
+  const words = djMatch[1].split(/\s+/);
+  
+  // Build the DJ tag by taking words until we hit a stop word
+  const tagWords = [words[0]]; // Always include "DJ"
+  
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i].toLowerCase().replace(/[^a-z]/g, '');
+    
+    // Stop if we hit a stop word
+    if (stopWords.includes(word)) {
+      break;
     }
+    
+    // Stop if it looks like a song title (contains numbers or special patterns)
+    // But allow simple names like "Joey2" or "DJ Mike"
+    if (i > 2) {
+      break; // DJ names are typically 1-2 words after "DJ"
+    }
+    
+    tagWords.push(words[i]);
   }
   
-  return null;
+  // Must have at least "DJ [Name]"
+  if (tagWords.length < 2) return null;
+  
+  // Clean and return
+  const tag = tagWords.join(' ').replace(/[,.:!?]+$/, '').trim();
+  
+  console.log("Extracted DJ tag:", tag, "from message:", cleanMessage);
+  
+  return tag;
 }
 
 /**
