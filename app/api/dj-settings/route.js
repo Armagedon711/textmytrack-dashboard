@@ -159,6 +159,9 @@ async function findAllDJsOnNumber(phone) {
   return [];
 }
 
+// Universal number - Trial and Pro users share this
+const UNIVERSAL_NUMBER = "+18557105533";
+
 export async function GET(request) {
   try {
     if (!supabaseAdmin) {
@@ -182,13 +185,56 @@ export async function GET(request) {
       );
     }
 
+    // Normalize phone number for comparison
+    const normalizedPhone = '+' + phone.replace(/\D/g, '');
+    const isUniversalNumber = normalizedPhone === UNIVERSAL_NUMBER || 
+                              phone === UNIVERSAL_NUMBER ||
+                              phone.replace(/\D/g, '') === UNIVERSAL_NUMBER.replace(/\D/g, '');
+
+    console.log("Is Universal Number:", isUniversalNumber);
+
     let djProfile = null;
     let matchMethod = null;
     let extractedTag = null;
 
     // =============================================================
-    // STEP 1: Try to extract and match DJ tag from message
+    // DEDICATED NUMBER (Headliner) - Skip tag system entirely
     // =============================================================
+    if (!isUniversalNumber) {
+      console.log("Dedicated number detected - bypassing tag system");
+      
+      djProfile = await findDJByPhone(phone);
+      
+      if (djProfile) {
+        matchMethod = "dedicated_number";
+        console.log("Found DJ by dedicated number:", djProfile.name || djProfile.id);
+        
+        return NextResponse.json({
+          dj_id: djProfile.id,
+          preferred_platform: djProfile.preferred_platform || "youtube",
+          twilio_number: djProfile.twilio_number,
+          tag: djProfile.tag,
+          plan: djProfile.plan,
+          match_method: matchMethod
+        });
+      } else {
+        // Dedicated number not found in database
+        return NextResponse.json({
+          dj_id: null,
+          preferred_platform: "youtube",
+          note: "DJ not found for this number",
+          error: "unknown_number",
+          message: "This number is not registered"
+        });
+      }
+    }
+
+    // =============================================================
+    // UNIVERSAL NUMBER - Use tag system
+    // =============================================================
+    console.log("Universal number - using tag system");
+
+    // STEP 1: Try to extract and match DJ tag from message
     if (message) {
       extractedTag = extractDJTag(message);
       console.log("Extracted DJ Tag:", extractedTag);
@@ -202,26 +248,16 @@ export async function GET(request) {
       }
     }
 
-    // =============================================================
-    // STEP 2: If no tag match, check if this is a dedicated number (Headliner)
-    // =============================================================
+    // STEP 2: If no tag match, return error with available tags
     if (!djProfile) {
-      // First check if there's only ONE DJ on this number (dedicated line)
       const allDJsOnNumber = await findAllDJsOnNumber(phone);
       
-      if (allDJsOnNumber.length === 1) {
-        // Dedicated number - only one DJ uses it
-        djProfile = await findDJByPhone(phone);
-        matchMethod = "dedicated_number";
-        console.log("Found DJ by dedicated number");
-      } else if (allDJsOnNumber.length > 1) {
-        // Shared number - multiple DJs, but no tag was provided/matched
-        // Return an error suggesting the user include a DJ tag
+      if (allDJsOnNumber.length > 0) {
         const availableTags = allDJsOnNumber
           .filter(dj => dj.tag)
           .map(dj => dj.tag);
         
-        console.log("Multiple DJs on shared number, no tag match. Available tags:", availableTags);
+        console.log("No tag match. Available tags:", availableTags);
         
         return NextResponse.json({
           dj_id: null,
@@ -238,18 +274,7 @@ export async function GET(request) {
     }
 
     // =============================================================
-    // STEP 3: Final fallback - try phone lookup anyway
-    // =============================================================
-    if (!djProfile) {
-      djProfile = await findDJByPhone(phone);
-      if (djProfile) {
-        matchMethod = "phone_fallback";
-        console.log("Found DJ by phone fallback");
-      }
-    }
-
-    // =============================================================
-    // STEP 4: Return result
+    // STEP 3: Return result
     // =============================================================
     if (!djProfile) {
       return NextResponse.json({
