@@ -113,13 +113,15 @@ export default function PlayerModal({
       const playerInstance = playerRef.current;
       if (playerInstance) {
         try {
-          // Stop video and destroy the instance to prevent the crash
-          playerInstance.stopVideo(); 
-          playerInstance.destroy();
+          // FIX 3: Explicitly check if the destroy method exists before calling to prevent crash
+          if (typeof playerInstance.destroy === 'function') {
+              playerInstance.stopVideo(); 
+              playerInstance.destroy();
+          }
         } catch (e) {
           console.error("Error destroying player on unmount:", e);
         } finally {
-          playerRef.current = null; // CRITICAL: Clear the ref to prevent lingering issues
+          playerRef.current = null; // CRITICAL: Ensure the ref is cleared
         }
       }
     };
@@ -155,10 +157,10 @@ export default function PlayerModal({
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
   const playerContainerClasses = isMinimized 
-    // Minimized: Minimal, simple classes
+    // Minimized: Simple classes, positioning handled by style prop
     ? "w-[1px] h-[1px] overflow-hidden pointer-events-none transition-all duration-300" 
-    // Maximize: Centered within viewport. FIX: Removed z-51
-    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300"; 
+    // Maximize: Centered within viewport. FIX 1: Set z-index to 40 (less than z-50 modal)
+    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-40"; 
 
   return (
     <>
@@ -168,7 +170,7 @@ export default function PlayerModal({
         className={`fixed bg-black ${playerContainerClasses}`}
         style={isMinimized 
           ? { 
-              // FIX: Aggressively reset position and transform off-screen
+              // FIX 2: Aggressively reset position and transform off-screen
               transform: 'translate3d(-10000px, -10000px, 0)', 
               opacity: 0,
               width: '1px',
@@ -177,7 +179,7 @@ export default function PlayerModal({
               left: '0px',
             } 
           : {
-              // Constraints for maximized player (Positioning is handled by playerContainerClasses)
+              // Constraints for maximized player
               maxWidth: 'calc(100vw - 32px)', 
               maxHeight: 'calc(90vh - 32px)',
             }
@@ -187,7 +189,7 @@ export default function PlayerModal({
 
       {/* 2. THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
       <div
-        className={`fixed z-50 transition-all duration-300 ${ // z-50 ensures it's on top
+        className={`fixed z-50 transition-all duration-300 ${ // z-50 is the backdrop and container
           isMinimized
             ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
