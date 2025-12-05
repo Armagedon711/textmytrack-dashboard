@@ -6,9 +6,8 @@ import {
   ThumbsUp, Check, Minimize2, Maximize2, X, Music 
 } from "lucide-react";
 
-const PLAYER_ID = "youtube-player-persistence"; // CRITICAL: Single ID for persistence
+const PLAYER_ID = "youtube-player-persistence";
 
-// Function to load the YT IFrame API script
 const loadYoutubeScript = () => {
   if (window.YT && window.YT.Player) return;
 
@@ -45,20 +44,17 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
-  // Initialize YouTube Player ONLY ONCE or update the video when ID changes.
   useEffect(() => {
     if (!videoId) return;
 
     let initTimeout;
 
     const initPlayer = () => {
-      // Wait for YT API to be loaded
       if (!window.YT || !window.YT.Player) {
         initTimeout = setTimeout(initPlayer, 100);
         return;
       }
       
-      // If the player instance exists, just load the new video and return
       if (playerRef.current) {
         playerRef.current.loadVideoById(videoId);
         isMuted ? playerRef.current.mute() : playerRef.current.unMute();
@@ -66,7 +62,6 @@ export default function PlayerModal({
         return;
       }
 
-      // Initialize the player the first time
       playerRef.current = new window.YT.Player(PLAYER_ID, {
         videoId: videoId,
         playerVars: {
@@ -93,27 +88,24 @@ export default function PlayerModal({
           },
           onError: (e) => {
             console.error("Player Error:", e);
-            setTimeout(onVideoEnd, 2000); // Skip on error
+            setTimeout(onVideoEnd, 2000);
           }
         },
       });
     };
     
-    // Logic to call initPlayer
     if (window.YT && window.YT.Player) {
         initPlayer();
     } else {
         window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup: Only runs when the component UNMOUNTS (e.g., when you click Close/X)
     return () => {
       clearTimeout(initTimeout); 
       
       const playerInstance = playerRef.current;
       if (playerInstance) {
         try {
-          // Robust check for destroy method to prevent site crash on close
           if (typeof playerInstance.destroy === 'function') {
               playerInstance.stopVideo(); 
               playerInstance.destroy();
@@ -121,13 +113,12 @@ export default function PlayerModal({
         } catch (e) {
           console.error("Error destroying player on unmount:", e);
         } finally {
-          playerRef.current = null; // CRITICAL: Ensure the ref is cleared
+          playerRef.current = null;
         }
       }
     };
   }, [videoId, isMuted, onVideoEnd]); 
 
-  // Handle Mute
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -137,7 +128,6 @@ export default function PlayerModal({
     }
   }, [isMuted]);
 
-  // Handle Play/Pause
   const handleTogglePlay = () => {
     if (!playerRef.current) return;
     try {
@@ -154,40 +144,35 @@ export default function PlayerModal({
   };
 
   if (!videoId || !request) return null;
-  
-  // CRITICAL: Dynamic positioning for the fixed YouTube player container
-  const playerContainerClasses = isMinimized 
-    // FIX 1: Minimal size/visibility classes when minimized.
-    ? "w-[1px] h-[1px] overflow-hidden pointer-events-none transition-all duration-300" 
-    // Maximize: Centered within viewport, z-40 (Behind z-50 modal container)
-    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-40"; 
 
   return (
     <>
-      {/* 1. CRITICAL: The persistent fixed YouTube iframe container (always in DOM) */}
+      {/* 
+        FIX: Wrapper container that handles ALL positioning.
+        The inner div (PLAYER_ID) gets replaced by YouTube's iframe,
+        so we can't rely on its classes for positioning.
+      */}
       <div 
-        id={PLAYER_ID}
-        className={`fixed bg-black ${playerContainerClasses}`}
-        style={isMinimized 
-          ? { 
-              // FIX 1: Aggressively override all positioning/transforms when minimized
-              top: '0px', 
-              left: '0px',
-              transform: 'none', // CRITICAL: Explicitly remove all centering transforms
-              opacity: 0,
-            } 
-          : {
-              // Constraints for maximized player (Tailwind classes handle centering)
-              maxWidth: 'calc(100vw - 32px)', 
-              maxHeight: 'calc(90vh - 32px)',
-            }
-        }
-      />
+        className={`fixed bg-black transition-all duration-300 ${
+          isMinimized 
+            ? "w-[1px] h-[1px] opacity-0 pointer-events-none top-0 left-0" 
+            : "w-full max-w-4xl aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl z-[60]"
+        }`}
+        style={!isMinimized ? {
+          maxWidth: 'calc(100vw - 32px)', 
+          maxHeight: 'calc(90vh - 100px)',
+        } : undefined}
+      >
+        {/* This div gets replaced by YouTube iframe - it just fills the container */}
+        <div 
+          id={PLAYER_ID}
+          className="w-full h-full"
+        />
+      </div>
 
-
-      {/* 2. THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
+      {/* THE VISIBLE MODAL UI CONTAINER */}
       <div
-        className={`fixed z-50 transition-all duration-300 ${ // z-50 is the backdrop and container
+        className={`fixed z-50 transition-all duration-300 ${
           isMinimized
             ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
@@ -201,20 +186,17 @@ export default function PlayerModal({
           }`}
         >
           
-          {/* Maximize Player Controls and Info */}
+          {/* Maximized Player Controls and Info */}
           {!isMinimized && (
-            <div className="flex flex-col h-full relative z-55"> 
+            <div className="flex flex-col h-full relative"> 
               
-              {/* Video Container (Aspect Ratio Box) - Transparent placeholder for the video element */}
-              <div 
-                className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden" 
-              >
-                {/* Fallback/Loading Overlay */}
-                 {!playerRef.current && (
-                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-56">
-                       <Music size={32} className="text-gray-500 animate-spin" />
-                    </div>
-                 )}
+              {/* Video Container - transparent placeholder, actual video is in the fixed container above */}
+              <div className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden">
+                {!playerRef.current && (
+                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+                    <Music size={32} className="text-gray-500 animate-spin" />
+                  </div>
+                )}
               </div>
 
               {/* Controls and Info (Maximized) */}
@@ -295,10 +277,9 @@ export default function PlayerModal({
           {/* Minimized Player */}
           {isMinimized && request && (
             <div className="flex items-center p-3 w-full">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={onMaximize}>
-                {/* Active/Playing Icon */}
+              <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={onMaximize}>
                 <div 
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-300 ${
                     isPlaying ? 'bg-pink-500/20' : 'bg-gray-500/10'
                   }`}
                 >
@@ -311,7 +292,7 @@ export default function PlayerModal({
               </div>
               
               {/* Minimized Controls */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2 ml-auto flex-shrink-0">
                 <button 
                   onClick={handleTogglePlay} 
                   className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white"
