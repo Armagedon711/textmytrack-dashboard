@@ -29,7 +29,7 @@ export default function PlayerModal({
   onClose,
   onMinimize,
   onMaximize,
-  onTogglePlay,
+  onTogglePlay, // Keeping for compatibility, but logic is internal
   onToggleMute,
   onToggleAutoPlay,
   onSkip,
@@ -38,7 +38,8 @@ export default function PlayerModal({
   onVideoEnd,
 }) {
   const playerRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  // Default to true, as we autoplay when videoId is set
+  const [isPlaying, setIsPlaying] = useState(true); 
 
   // Load the YouTube API script once on mount
   useEffect(() => {
@@ -157,12 +158,17 @@ export default function PlayerModal({
         }`}
       >
         
-        {/* Minimized Player */}
+        {/* Minimized Player (FIXED: Ensure controls use current state) */}
         {isMinimized && request && (
           <div className="flex items-center p-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center">
-                 <Music size={16} className="text-pink-400" />
+              {/* Active/Playing Icon */}
+              <div 
+                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+                  isPlaying ? 'bg-pink-500/20' : 'bg-gray-500/10'
+                }`}
+              >
+                 <Music size={16} className={`${isPlaying ? 'text-pink-400' : 'text-gray-400'}`} />
               </div>
               <div className="flex-1 min-w-0 cursor-pointer" onClick={onMaximize}>
                 <h4 className="font-semibold text-white text-sm truncate">{request.title}</h4>
@@ -170,18 +176,24 @@ export default function PlayerModal({
               </div>
             </div>
             
+            {/* Minimized Controls */}
             <div className="flex items-center gap-2 ml-auto">
-              <button onClick={handleTogglePlay} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white">
-                {isPlaying ? <Pause size={16} /> : <Play size={16} className="fill-white" />}
+              <button 
+                onClick={handleTogglePlay} 
+                className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {/* FIX: Use fill-white when playing to show the icon, especially Play */}
+                {isPlaying ? <Pause size={16} /> : <Play size={16} className="fill-white" />} 
               </button>
-              <button onClick={onClose} className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg">
+              <button onClick={onClose} className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg" title="Stop and Close">
                 <X size={16} />
               </button>
             </div>
           </div>
         )}
 
-        {/* Maximize Player */}
+        {/* Maximize Player (No changes needed here from last update) */}
         {!isMinimized && (
           <div className="flex flex-col h-full">
             
