@@ -106,15 +106,20 @@ export default function PlayerModal({
         window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup: ONLY clear the timeout. 
+    // Cleanup: Only runs when the component UNMOUNTS (e.g., when you click Close/X)
     return () => {
       clearTimeout(initTimeout); 
-      // If component unmounts entirely, destroy player
-      if (playerRef.current) {
+      
+      const playerInstance = playerRef.current;
+      if (playerInstance) {
         try {
-          playerRef.current.destroy();
+          // Stop video and destroy the instance to prevent the crash
+          playerInstance.stopVideo(); 
+          playerInstance.destroy();
         } catch (e) {
-          console.error("Error destroying player on unmount", e);
+          console.error("Error destroying player on unmount:", e);
+        } finally {
+          playerRef.current = null; // CRITICAL: Clear the ref to prevent lingering issues
         }
       }
     };
@@ -149,9 +154,9 @@ export default function PlayerModal({
   if (!videoId || !request) return null;
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
-  // FIX: Use left-[9999px] and top-[9999px] to ensure the 1x1 player is far off-screen when minimized.
+  // FIX 1: Use far off-screen position when minimized.
   const playerContainerClasses = isMinimized 
-    ? "w-[1px] h-[1px] left-[9999px] top-[9999px] opacity-0 overflow-hidden pointer-events-none" 
+    ? "w-[1px] h-[1px] -left-[9999px] -top-[9999px] opacity-0 overflow-hidden pointer-events-none" 
     : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; 
 
   return (
