@@ -6,6 +6,8 @@ import {
   ThumbsUp, Check, Minimize2, Maximize2, X, Music 
 } from "lucide-react";
 
+const PLAYER_ID = "youtube-player-persistence"; // CRITICAL: Single ID for persistence
+
 // Function to load the YT IFrame API script
 const loadYoutubeScript = () => {
   if (window.YT && window.YT.Player) return;
@@ -13,7 +15,7 @@ const loadYoutubeScript = () => {
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
   const firstScriptTag = document.getElementsByTagName('script')[0];
-  if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+  if (!document.querySelector(`script[src="https://www.youtube.com/iframe_api"]`)) {
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
   }
 };
@@ -39,20 +41,15 @@ export default function PlayerModal({
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true); 
 
-  // Load the YouTube API script once on mount
   useEffect(() => {
     loadYoutubeScript();
   }, []);
 
-  // Initialize YouTube Player
-  // CRITICAL FIX: Re-initialize player when videoId or isMinimized changes to ensure the player 
-  // binds to the correct DOM element ID (visible or 1px hidden).
+  // Initialize YouTube Player ONLY ONCE or update the video when ID changes.
   useEffect(() => {
     if (!videoId) return;
 
     let initTimeout;
-    // CRITICAL: Determine the ID of the div element to target based on state
-    const playerId = isMinimized ? "youtube-player-hidden" : "youtube-player-visible";
 
     const initPlayer = () => {
       // Wait for YT API to be loaded
@@ -61,13 +58,18 @@ export default function PlayerModal({
         return;
       }
       
-      // Destroy old player instance if it exists (required when switching IDs/visibility)
+      // If the player instance exists, just load the new video and return
       if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch (e) {}
-        playerRef.current = null;
+        // IMPORTANT: loadVideoById ensures the video starts playing from the start, 
+        // which is correct when switching to a *new* song.
+        playerRef.current.loadVideoById(videoId);
+        isMuted ? playerRef.current.mute() : playerRef.current.unMute();
+        setIsPlaying(true);
+        return;
       }
 
-      playerRef.current = new window.YT.Player(playerId, {
+      // Initialize the player the first time
+      playerRef.current = new window.YT.Player(PLAYER_ID, {
         videoId: videoId,
         playerVars: {
           autoplay: 1,
@@ -106,21 +108,14 @@ export default function PlayerModal({
         window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup: Clear timeout and destroy player when component unmounts or dependencies change
+    // Cleanup: ONLY clear the timeout. Player persistence requires the player to NOT be destroyed 
+    // when dependencies change (only when the component unmounts entirely).
     return () => {
       clearTimeout(initTimeout); 
-      if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch (e) {
-          console.error("Error destroying player", e);
-        }
-      }
-      playerRef.current = null;
     };
-  }, [videoId, isMuted, onVideoEnd, isMinimized]); // isMinimized is a critical dependency
+  }, [videoId, isMuted, onVideoEnd]); // isMinimized IS NOT a dependency
 
-  // Handle External Mute Control (updates without re-initializing player)
+  // Handle Mute
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -147,26 +142,36 @@ export default function PlayerModal({
   };
 
   if (!videoId || !request) return null;
+  
+  // CRITICAL: Dynamic positioning for the fixed YouTube player container
+  const playerContainerClasses = isMinimized 
+    ? "w-[1px] h-[1px] bottom-0 right-0 opacity-0 overflow-hidden pointer-events-none" // Minimized hack: Hides it while keeping it active
+    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; // Maximize position (z-51 ensures it's above the modal's backdrop)
 
   return (
     <>
-      {/* CRITICAL HACK: 1x1px hidden player for when minimized
-        This element ensures the player iframe remains in the DOM when the modal is minimized,
-        allowing the music to keep playing in the background without being visible.
-      */}
-      {isMinimized && (
-        <div 
-            id="youtube-player-hidden" 
-            className="fixed bottom-0 right-0 w-[1px] h-[1px] opacity-0 overflow-hidden pointer-events-none z-0" 
-        />
-      )}
+      {/* 1. CRITICAL: The persistent fixed YouTube iframe container (always in DOM) */}
+      <div 
+        id={PLAYER_ID}
+        className={`fixed bg-black ${playerContainerClasses}`}
+        style={!isMinimized 
+          ? { 
+              // Set constraints for the maximized size/position to fit the modal
+              maxWidth: 'calc(100vw - 32px)', // Screen width minus 2x padding (p-4)
+              maxHeight: 'calc(90vh - 32px)', // Screen height minus 2x padding (p-4)
+              aspectRatio: '16/9', 
+            } 
+          : {}
+        }
+      />
 
-      {/* THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
+
+      {/* 2. THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
       <div
         className={`fixed z-50 transition-all duration-300 ${
           isMinimized
             ? "bottom-0 left-0 w-full" 
-            : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" // Backdrop for maximized
+            : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
         }`}
       >
         <div
@@ -179,24 +184,22 @@ export default function PlayerModal({
           
           {/* Maximize Player Controls and Info */}
           {!isMinimized && (
-            <div className="flex flex-col h-full">
+            <div className="flex flex-col h-full relative z-55"> {/* Higher z-index for controls */}
               
-              {/* Video Container (Aspect Ratio Box) - THIS IS WHERE THE PLAYER GOES WHEN MAXIMIZED */}
-              <div className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden">
-                <div 
-                  id="youtube-player-visible" // <--- This is the visible player's ID location
-                  className="absolute inset-0 w-full h-full" 
-                />
-                {/* Fallback if video fails/loads slowly */}
+              {/* Video Container (Aspect Ratio Box) - This is now a transparent placeholder */}
+              <div 
+                className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden" 
+              >
+                {/* Fallback/Loading Overlay - Visible if the persistent player hasn't loaded */}
                  {!playerRef.current && (
-                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-56">
                        <Music size={32} className="text-gray-500 animate-spin" />
                     </div>
                  )}
               </div>
 
-              {/* Controls and Info (Maximized) - These controls now sit BELOW the video frame in the DOM */}
-              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between">
+              {/* Controls and Info (Maximized) - These controls are now safely above the video iframe */}
+              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
                 {/* Song Info */}
                 <div className="mb-4">
