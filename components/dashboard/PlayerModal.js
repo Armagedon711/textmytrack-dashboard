@@ -154,10 +154,10 @@ export default function PlayerModal({
   if (!videoId || !request) return null;
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
-  // FIX 1: Use far off-screen position when minimized.
+  // FIX 1: Simplify classes and move hiding to style prop for guaranteed off-screen position.
   const playerContainerClasses = isMinimized 
-    ? "w-[1px] h-[1px] -left-[9999px] -top-[9999px] opacity-0 overflow-hidden pointer-events-none" 
-    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; 
+    ? "overflow-hidden pointer-events-none transition-all duration-300" // Minimized: Minimal, simple classes
+    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; // Maximize: Centered within viewport
 
   return (
     <>
@@ -165,13 +165,19 @@ export default function PlayerModal({
       <div 
         id={PLAYER_ID}
         className={`fixed bg-black ${playerContainerClasses}`}
-        style={!isMinimized 
+        style={isMinimized 
           ? { 
-              // Enforce maximum size constraints when maximized 
+              // FIX: Use a large negative translation and display: none for guaranteed off-screen position
+              transform: 'translate3d(-9999px, -9999px, 0)', 
+              display: 'none', // The ultimate visual removal 
+              width: '1px',
+              height: '1px',
+            } 
+          : {
+              // Constraints for maximized player
               maxWidth: 'calc(100vw - 32px)', 
               maxHeight: 'calc(90vh - 32px)',
-            } 
-          : {}
+            }
         }
       />
 
