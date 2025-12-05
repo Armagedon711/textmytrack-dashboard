@@ -153,14 +153,18 @@ export default function PlayerModal({
         so we can't rely on its classes for positioning.
       */}
       <div 
-        className={`fixed bg-black transition-all duration-300 ${
+        className={`fixed bg-black transition-all duration-300 overflow-hidden ${
           isMinimized 
             ? "w-[1px] h-[1px] opacity-0 pointer-events-none top-0 left-0" 
-            : "w-full max-w-4xl aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl z-[60]"
+            : "rounded-t-xl z-[60]"
         }`}
         style={!isMinimized ? {
-          maxWidth: 'calc(100vw - 32px)', 
-          maxHeight: 'calc(90vh - 100px)',
+          width: 'calc(100vw - 32px)',
+          maxWidth: '896px', // max-w-4xl equivalent
+          aspectRatio: '16/9',
+          top: '50%',
+          left: '50%',
+          transform: 'translateX(-50%) translateY(calc(-50% - 60px))', // Offset up to account for controls below
         } : undefined}
       >
         {/* This div gets replaced by YouTube iframe - it just fills the container */}
