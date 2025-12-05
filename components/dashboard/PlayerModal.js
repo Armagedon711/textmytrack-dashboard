@@ -157,8 +157,8 @@ export default function PlayerModal({
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
   const playerContainerClasses = isMinimized 
-    // FIX 1: Minimal classes when minimized. Rely on inline style for aggressive hiding.
-    ? "transition-all duration-300" 
+    // FIX 1: Minimal size/visibility classes when minimized.
+    ? "w-[1px] h-[1px] overflow-hidden pointer-events-none transition-all duration-300" 
     // Maximize: Centered within viewport, z-40 (Behind z-50 modal container)
     : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-40"; 
 
@@ -170,18 +170,14 @@ export default function PlayerModal({
         className={`fixed bg-black ${playerContainerClasses}`}
         style={isMinimized 
           ? { 
-              // FIX 1: Ultimate off-screen positioning override
-              top: '9999px', // Explicit high value
-              left: '9999px', // Explicit high value
+              // FIX 1: Aggressively override all positioning/transforms when minimized
+              top: '0px', 
+              left: '0px',
               transform: 'none', // CRITICAL: Explicitly remove all centering transforms
               opacity: 0,
-              width: '1px',
-              height: '1px',
-              overflow: 'hidden',
-              pointerEvents: 'none',
             } 
           : {
-              // Constraints for maximized player
+              // Constraints for maximized player (Tailwind classes handle centering)
               maxWidth: 'calc(100vw - 32px)', 
               maxHeight: 'calc(90vh - 32px)',
             }
