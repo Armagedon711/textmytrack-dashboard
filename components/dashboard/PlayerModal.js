@@ -113,7 +113,7 @@ export default function PlayerModal({
       const playerInstance = playerRef.current;
       if (playerInstance) {
         try {
-          // FIX 3: Explicitly check if the destroy method exists before calling to prevent crash
+          // Robust check for destroy method to prevent site crash on close
           if (typeof playerInstance.destroy === 'function') {
               playerInstance.stopVideo(); 
               playerInstance.destroy();
@@ -157,9 +157,9 @@ export default function PlayerModal({
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
   const playerContainerClasses = isMinimized 
-    // Minimized: Simple classes, positioning handled by style prop
-    ? "w-[1px] h-[1px] overflow-hidden pointer-events-none transition-all duration-300" 
-    // Maximize: Centered within viewport. FIX 1: Set z-index to 40 (less than z-50 modal)
+    // FIX 1: Minimal classes when minimized. Rely on inline style for aggressive hiding.
+    ? "transition-all duration-300" 
+    // Maximize: Centered within viewport, z-40 (Behind z-50 modal container)
     : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-40"; 
 
   return (
@@ -170,13 +170,15 @@ export default function PlayerModal({
         className={`fixed bg-black ${playerContainerClasses}`}
         style={isMinimized 
           ? { 
-              // FIX 2: Aggressively reset position and transform off-screen
-              transform: 'translate3d(-10000px, -10000px, 0)', 
+              // FIX 1: Ultimate off-screen positioning override
+              top: '9999px', // Explicit high value
+              left: '9999px', // Explicit high value
+              transform: 'none', // CRITICAL: Explicitly remove all centering transforms
               opacity: 0,
               width: '1px',
               height: '1px',
-              top: '0px', 
-              left: '0px',
+              overflow: 'hidden',
+              pointerEvents: 'none',
             } 
           : {
               // Constraints for maximized player
