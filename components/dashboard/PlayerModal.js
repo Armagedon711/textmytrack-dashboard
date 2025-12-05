@@ -9,6 +9,7 @@ import {
 // Function to load the YT IFrame API script
 const loadYoutubeScript = () => {
   if (window.YT && window.YT.Player) return;
+
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
   const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -36,7 +37,6 @@ export default function PlayerModal({
   onVideoEnd,
 }) {
   const playerRef = useRef(null);
-  // Default to true, as we autoplay when videoId is set
   const [isPlaying, setIsPlaying] = useState(true); 
 
   // Load the YouTube API script once on mount
@@ -44,11 +44,15 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
-  // Initialize YouTube Player - CRITICAL: Removed the destroy call
+  // Initialize YouTube Player
+  // CRITICAL FIX: Re-initialize player when videoId or isMinimized changes to ensure the player 
+  // binds to the correct DOM element ID (visible or 1px hidden).
   useEffect(() => {
     if (!videoId) return;
 
     let initTimeout;
+    // CRITICAL: Determine the ID of the div element to target based on state
+    const playerId = isMinimized ? "youtube-player-hidden" : "youtube-player-visible";
 
     const initPlayer = () => {
       // Wait for YT API to be loaded
@@ -57,16 +61,13 @@ export default function PlayerModal({
         return;
       }
       
-      // If the player instance exists, just load the new video
+      // Destroy old player instance if it exists (required when switching IDs/visibility)
       if (playerRef.current) {
-        playerRef.current.loadVideoById(videoId);
-        isMuted ? playerRef.current.mute() : playerRef.current.unMute();
-        setIsPlaying(true);
-        return;
+        try { playerRef.current.destroy(); } catch (e) {}
+        playerRef.current = null;
       }
 
-      // Initialize the player the first time
-      playerRef.current = new window.YT.Player("youtube-player", {
+      playerRef.current = new window.YT.Player(playerId, {
         videoId: videoId,
         playerVars: {
           autoplay: 1,
@@ -92,8 +93,7 @@ export default function PlayerModal({
           },
           onError: (e) => {
             console.error("Player Error:", e);
-            // Auto-skip on error after 2 seconds
-            setTimeout(onVideoEnd, 2000);
+            setTimeout(onVideoEnd, 2000); // Skip on error
           }
         },
       });
@@ -106,11 +106,29 @@ export default function PlayerModal({
         window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup: ONLY clear the timeout.
+    // Cleanup: Clear timeout and destroy player when component unmounts or dependencies change
     return () => {
       clearTimeout(initTimeout); 
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {
+          console.error("Error destroying player", e);
+        }
+      }
+      playerRef.current = null;
     };
-  }, [videoId, isMuted, onVideoEnd]); 
+  }, [videoId, isMuted, onVideoEnd, isMinimized]); // isMinimized is a critical dependency
+
+  // Handle External Mute Control (updates without re-initializing player)
+  useEffect(() => {
+    if (!playerRef.current?.mute) return;
+    try {
+      isMuted ? playerRef.current.mute() : playerRef.current.unMute();
+    } catch(e) {
+      console.error("Error setting mute state:", e);
+    }
+  }, [isMuted]);
 
   // Handle Play/Pause
   const handleTogglePlay = () => {
@@ -128,74 +146,47 @@ export default function PlayerModal({
     }
   };
 
-  // Handle External Mute Control
-  useEffect(() => {
-    if (!playerRef.current?.mute) return;
-    try {
-      isMuted ? playerRef.current.mute() : playerRef.current.unMute();
-    } catch(e) {
-      console.error("Error setting mute state:", e);
-    }
-  }, [isMuted]);
-
   if (!videoId || !request) return null;
 
   return (
     <>
-      {/* CRITICAL ELEMENT: THE YOUTUBE IFRAME DIV - Always Rendered 
-        This is the target for the YT API and MUST persist in the DOM.
-        We use conditional classes to size and position it for both states.
+      {/* CRITICAL HACK: 1x1px hidden player for when minimized
+        This element ensures the player iframe remains in the DOM when the modal is minimized,
+        allowing the music to keep playing in the background without being visible.
       */}
-      <div 
-        id="youtube-player" 
-        className={`fixed z-40 bg-black transition-all duration-300 ${
-          // Minimized State: 1x1 size, pushed to the bottom right (visually off-screen, but still 'visible' to API)
-          isMinimized 
-            ? "w-[1px] h-[1px] bottom-0 right-0 overflow-hidden opacity-0 pointer-events-none" 
-            : 
-          // Maximize State: Correctly positioned within the overlay container
-            "w-full h-full rounded-t-xl" 
-        }`}
-        style={!isMinimized 
-          ? { 
-              // When Maximized, position it over the reserved space in the main modal
-              maxWidth: 'calc(100% - 2rem)', // Max width with padding
-              maxHeight: 'calc(90vh - 2rem)', // Max height with padding
-              aspectRatio: '16/9', // Enforce video aspect ratio
-              top: '50%', 
-              left: '50%', 
-              transform: 'translate(-50%, -50%)', 
-              zIndex: 51 // Place it on top of the background, but below controls
-            } 
-          : {}
-        }
-      />
+      {isMinimized && (
+        <div 
+            id="youtube-player-hidden" 
+            className="fixed bottom-0 right-0 w-[1px] h-[1px] opacity-0 overflow-hidden pointer-events-none z-0" 
+        />
+      )}
 
-
-      {/* THE VISIBLE MODAL UI CONTAINER
-        This container controls the appearance of the controls and info bar.
-      */}
+      {/* THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
       <div
         className={`fixed z-50 transition-all duration-300 ${
           isMinimized
-            ? "bottom-0 left-0 w-full" // FIX 1: Full-width bar at the very bottom
+            ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" // Backdrop for maximized
         }`}
       >
         <div
           className={`relative bg-[#12121a] shadow-2xl border border-white/5 ${
             isMinimized 
-              ? "h-auto rounded-t-xl rounded-b-none w-full" // FIX 1: Full-width inner bar with rounded top
+              ? "h-auto rounded-t-xl rounded-b-none w-full"
               : "w-full max-w-4xl h-full max-h-[90vh] rounded-xl"
           }`}
         >
           
           {/* Maximize Player Controls and Info */}
           {!isMinimized && (
-            <div className="flex flex-col h-full relative z-50">
+            <div className="flex flex-col h-full">
               
-              {/* Video Frame Placeholder - Reserves space for the video that is positioned globally */}
+              {/* Video Container (Aspect Ratio Box) - THIS IS WHERE THE PLAYER GOES WHEN MAXIMIZED */}
               <div className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden">
+                <div 
+                  id="youtube-player-visible" // <--- This is the visible player's ID location
+                  className="absolute inset-0 w-full h-full" 
+                />
                 {/* Fallback if video fails/loads slowly */}
                  {!playerRef.current && (
                     <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
@@ -204,7 +195,7 @@ export default function PlayerModal({
                  )}
               </div>
 
-              {/* Controls and Info (Maximized) */}
+              {/* Controls and Info (Maximized) - These controls now sit BELOW the video frame in the DOM */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between">
                 
                 {/* Song Info */}
@@ -279,7 +270,7 @@ export default function PlayerModal({
             </div>
           )}
 
-          {/* Minimized Player (FIXED: Full-width bar) */}
+          {/* Minimized Player */}
           {isMinimized && request && (
             <div className="flex items-center p-3 w-full">
               <div className="flex items-center gap-3 cursor-pointer" onClick={onMaximize}>
