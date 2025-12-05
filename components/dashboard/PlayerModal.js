@@ -154,10 +154,11 @@ export default function PlayerModal({
   if (!videoId || !request) return null;
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
-  // FIX 1: Simplify classes and move hiding to style prop for guaranteed off-screen position.
   const playerContainerClasses = isMinimized 
-    ? "overflow-hidden pointer-events-none transition-all duration-300" // Minimized: Minimal, simple classes
-    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; // Maximize: Centered within viewport
+    // Minimized: Minimal, simple classes
+    ? "w-[1px] h-[1px] overflow-hidden pointer-events-none transition-all duration-300" 
+    // Maximize: Centered within viewport. FIX: Removed z-51
+    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300"; 
 
   return (
     <>
@@ -167,14 +168,16 @@ export default function PlayerModal({
         className={`fixed bg-black ${playerContainerClasses}`}
         style={isMinimized 
           ? { 
-              // FIX: Use a large negative translation and display: none for guaranteed off-screen position
-              transform: 'translate3d(-9999px, -9999px, 0)', 
-              display: 'none', // The ultimate visual removal 
+              // FIX: Aggressively reset position and transform off-screen
+              transform: 'translate3d(-10000px, -10000px, 0)', 
+              opacity: 0,
               width: '1px',
               height: '1px',
+              top: '0px', 
+              left: '0px',
             } 
           : {
-              // Constraints for maximized player
+              // Constraints for maximized player (Positioning is handled by playerContainerClasses)
               maxWidth: 'calc(100vw - 32px)', 
               maxHeight: 'calc(90vh - 32px)',
             }
@@ -184,7 +187,7 @@ export default function PlayerModal({
 
       {/* 2. THE VISIBLE MODAL UI CONTAINER (Wraps controls and backdrop) */}
       <div
-        className={`fixed z-50 transition-all duration-300 ${
+        className={`fixed z-50 transition-all duration-300 ${ // z-50 ensures it's on top
           isMinimized
             ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
