@@ -16,7 +16,7 @@ if (
   );
 }
 
-// ---------- GET ----------
+// ---------- GET (Fetch Requests) ----------
 export async function GET(req) {
   try {
     if (!supabaseAdmin) {
@@ -43,8 +43,12 @@ export async function GET(req) {
       .order("requestedAt", { ascending: false });
 
     if (error) {
+      console.error("Supabase error fetching requests:", error.message); // <-- ADDED LOG
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    
+    // <-- ADDED LOG
+    console.log(`Successfully fetched ${data ? data.length : 0} requests for DJ: ${dj_id}`); 
 
     return NextResponse.json({ requests: data || [] });
   } catch (err) {
@@ -52,7 +56,7 @@ export async function GET(req) {
   }
 }
 
-// ---------- POST ----------
+// ---------- POST (Insert New Request) ----------
 export async function POST(request) {
   try {
     if (!supabaseAdmin) {
@@ -75,7 +79,7 @@ export async function POST(request) {
       requestedAt,
       url,
       thumbnail,
-      dj_id,
+      dj_id, // <-- CRITICAL: Must be present in the request body
       // New multi-platform fields
       platform,
       youtube_url,
@@ -142,11 +146,15 @@ export async function POST(request) {
     });
 
     if (error) {
+      console.error("Error inserting request:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    
+    console.log(`Successfully inserted new request for DJ: ${dj_id}`);
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error("Error in request POST endpoint:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
