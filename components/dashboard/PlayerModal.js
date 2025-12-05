@@ -60,8 +60,6 @@ export default function PlayerModal({
       
       // If the player instance exists, just load the new video and return
       if (playerRef.current) {
-        // IMPORTANT: loadVideoById ensures the video starts playing from the start, 
-        // which is correct when switching to a *new* song.
         playerRef.current.loadVideoById(videoId);
         isMuted ? playerRef.current.mute() : playerRef.current.unMute();
         setIsPlaying(true);
@@ -108,12 +106,19 @@ export default function PlayerModal({
         window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup: ONLY clear the timeout. Player persistence requires the player to NOT be destroyed 
-    // when dependencies change (only when the component unmounts entirely).
+    // Cleanup: ONLY clear the timeout. 
     return () => {
       clearTimeout(initTimeout); 
+      // If component unmounts entirely, destroy player
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {
+          console.error("Error destroying player on unmount", e);
+        }
+      }
     };
-  }, [videoId, isMuted, onVideoEnd]); // isMinimized IS NOT a dependency
+  }, [videoId, isMuted, onVideoEnd]); 
 
   // Handle Mute
   useEffect(() => {
@@ -144,9 +149,10 @@ export default function PlayerModal({
   if (!videoId || !request) return null;
   
   // CRITICAL: Dynamic positioning for the fixed YouTube player container
+  // FIX: Use left-[9999px] and top-[9999px] to ensure the 1x1 player is far off-screen when minimized.
   const playerContainerClasses = isMinimized 
-    ? "w-[1px] h-[1px] bottom-0 right-0 opacity-0 overflow-hidden pointer-events-none" // Minimized hack: Hides it while keeping it active
-    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; // Maximize position (z-51 ensures it's above the modal's backdrop)
+    ? "w-[1px] h-[1px] left-[9999px] top-[9999px] opacity-0 overflow-hidden pointer-events-none" 
+    : "w-full aspect-video top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-t-xl transition-all duration-300 z-51"; 
 
   return (
     <>
@@ -156,10 +162,9 @@ export default function PlayerModal({
         className={`fixed bg-black ${playerContainerClasses}`}
         style={!isMinimized 
           ? { 
-              // Set constraints for the maximized size/position to fit the modal
-              maxWidth: 'calc(100vw - 32px)', // Screen width minus 2x padding (p-4)
-              maxHeight: 'calc(90vh - 32px)', // Screen height minus 2x padding (p-4)
-              aspectRatio: '16/9', 
+              // Enforce maximum size constraints when maximized 
+              maxWidth: 'calc(100vw - 32px)', 
+              maxHeight: 'calc(90vh - 32px)',
             } 
           : {}
         }
@@ -184,13 +189,13 @@ export default function PlayerModal({
           
           {/* Maximize Player Controls and Info */}
           {!isMinimized && (
-            <div className="flex flex-col h-full relative z-55"> {/* Higher z-index for controls */}
+            <div className="flex flex-col h-full relative z-55"> 
               
-              {/* Video Container (Aspect Ratio Box) - This is now a transparent placeholder */}
+              {/* Video Container (Aspect Ratio Box) - Transparent placeholder for the video element */}
               <div 
                 className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden" 
               >
-                {/* Fallback/Loading Overlay - Visible if the persistent player hasn't loaded */}
+                {/* Fallback/Loading Overlay */}
                  {!playerRef.current && (
                     <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-56">
                        <Music size={32} className="text-gray-500 animate-spin" />
@@ -198,7 +203,7 @@ export default function PlayerModal({
                  )}
               </div>
 
-              {/* Controls and Info (Maximized) - These controls are now safely above the video iframe */}
+              {/* Controls and Info (Maximized) */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
                 {/* Song Info */}
