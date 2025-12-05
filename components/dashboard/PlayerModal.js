@@ -38,16 +38,26 @@ export default function PlayerModal({
   onVideoEnd,
 }) {
   const playerRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(true); 
+  const [isPlaying, setIsPlaying] = useState(true);
+  
+  // CRITICAL FIX: Use refs for callbacks to avoid stale closures
+  const onVideoEndRef = useRef(onVideoEnd);
+  
+  // Keep the ref updated with the latest callback
+  useEffect(() => {
+    onVideoEndRef.current = onVideoEnd;
+  }, [onVideoEnd]);
 
   useEffect(() => {
     loadYoutubeScript();
   }, []);
 
+  // Initialize player ONCE, then just load new videos
   useEffect(() => {
     if (!videoId) return;
 
     let initTimeout;
+    let isSubscribed = true; // Track if effect is still active
 
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) {
@@ -55,13 +65,18 @@ export default function PlayerModal({
         return;
       }
       
+      // If player exists, just load the new video
       if (playerRef.current) {
-        playerRef.current.loadVideoById(videoId);
-        isMuted ? playerRef.current.mute() : playerRef.current.unMute();
-        setIsPlaying(true);
+        try {
+          playerRef.current.loadVideoById(videoId);
+          setIsPlaying(true);
+        } catch (e) {
+          console.error("Error loading video:", e);
+        }
         return;
       }
 
+      // Create player only once
       playerRef.current = new window.YT.Player(PLAYER_ID, {
         videoId: videoId,
         playerVars: {
@@ -74,12 +89,17 @@ export default function PlayerModal({
         },
         events: {
           onReady: (event) => {
-            event.target.playVideo();
-            setIsPlaying(true);
+            if (isSubscribed) {
+              event.target.playVideo();
+              setIsPlaying(true);
+            }
           },
           onStateChange: (event) => {
+            if (!isSubscribed) return;
+            
             if (event.data === window.YT.PlayerState.ENDED) {
-              onVideoEnd();
+              // Use ref to get the latest callback
+              onVideoEndRef.current?.();
             } else if (event.data === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true);
             } else if (event.data === window.YT.PlayerState.PAUSED || event.data === window.YT.PlayerState.BUFFERING) {
@@ -88,27 +108,36 @@ export default function PlayerModal({
           },
           onError: (e) => {
             console.error("Player Error:", e);
-            setTimeout(onVideoEnd, 2000);
+            if (isSubscribed) {
+              setTimeout(() => onVideoEndRef.current?.(), 2000);
+            }
           }
         },
       });
     };
     
     if (window.YT && window.YT.Player) {
-        initPlayer();
+      initPlayer();
     } else {
-        window.onYouTubeIframeAPIReady = initPlayer;
+      window.onYouTubeIframeAPIReady = initPlayer;
     }
 
+    // Cleanup only clears timeout, does NOT destroy player (player persists across video changes)
     return () => {
-      clearTimeout(initTimeout); 
-      
+      isSubscribed = false;
+      clearTimeout(initTimeout);
+    };
+  }, [videoId]); // Only depend on videoId - mute is handled separately
+
+  // Separate cleanup effect that only runs on unmount
+  useEffect(() => {
+    return () => {
       const playerInstance = playerRef.current;
       if (playerInstance) {
         try {
           if (typeof playerInstance.destroy === 'function') {
-              playerInstance.stopVideo(); 
-              playerInstance.destroy();
+            playerInstance.stopVideo();
+            playerInstance.destroy();
           }
         } catch (e) {
           console.error("Error destroying player on unmount:", e);
@@ -117,7 +146,7 @@ export default function PlayerModal({
         }
       }
     };
-  }, [videoId, isMuted, onVideoEnd]); 
+  }, []); // Empty deps = only runs on unmount 
 
   useEffect(() => {
     if (!playerRef.current?.mute) return;
