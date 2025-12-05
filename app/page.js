@@ -14,10 +14,10 @@ import SettingsModal from "../components/dashboard/SettingsModal";
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
 const PLATFORMS = {
-  youtube: { name: "YouTube", icon: "🎬", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
-  spotify: { name: "Spotify", icon: "🎵", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
-  apple: { name: "Apple Music", icon: "🍎", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
-  soundcloud: { name: "SoundCloud", icon: "🔊", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
+  youtube: { name: "YouTube", icon: "汐", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
+  spotify: { name: "Spotify", icon: "七", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
+  apple: { name: "Apple Music", icon: "克", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
+  soundcloud: { name: "SoundCloud", icon: "矧", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
 };
 const TABS = [
   { key: "pending", label: "Requests" },
@@ -92,8 +92,17 @@ export default function Dashboard() {
       }
 
       // Load Requests (Initial)
-      const { data: reqs } = await fetch(`/api/requests?dj_id=${data.user.id}`).then(res => res.json());
-      if (reqs) setRequests(reqs.requests || []);
+      // FIX: Changed destructuring to correctly capture the JSON object
+      const reqs = await fetch(`/api/requests?dj_id=${data.user.id}`).then(res => res.json());
+      
+      // Added a defensive check to ensure reqs and reqs.requests exist
+      if (reqs && reqs.requests) {
+         setRequests(reqs.requests);
+      } else {
+         console.error("Failed to load initial requests from API:", reqs);
+         setRequests([]);
+      }
+      
       setLoading(false);
     };
     init();
@@ -121,7 +130,8 @@ export default function Dashboard() {
   const handleUpdateStatus = async (id, status) => {
     // Optimistic Update
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    await fetch("/api/requests-status", {
+    // NOTE: Using /api/update-request for a POST request to update status
+    await fetch("/api/update-request", { // Changed to use update-request endpoint
        method: "POST", headers: { "Content-Type": "application/json" },
        body: JSON.stringify({ id, status })
     });

@@ -44,8 +44,7 @@ export async function POST(req) {
       );
     }
 
-
-    const { error } = await supabaseAdmin
+    const { error } = await supabaseAdmin // Using the Admin Client
       .from("requests")
       .update({ status })
       .eq("id", id);
