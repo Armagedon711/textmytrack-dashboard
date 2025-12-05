@@ -13,11 +13,12 @@ import SettingsModal from "../components/dashboard/SettingsModal";
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
+// FIX: Replace broken unicode icons (Issue #3) with standard emojis
 const PLATFORMS = {
-  youtube: { name: "YouTube", icon: "汐", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
-  spotify: { name: "Spotify", icon: "七", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
-  apple: { name: "Apple Music", icon: "克", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
-  soundcloud: { name: "SoundCloud", icon: "矧", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
+  youtube: { name: "YouTube", icon: "▶️", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
+  spotify: { name: "Spotify", icon: "🟢", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
+  apple: { name: "Apple Music", icon: "", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
+  soundcloud: { name: "SoundCloud", icon: "☁️", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
 };
 const TABS = [
   { key: "pending", label: "Requests" },
@@ -92,10 +93,8 @@ export default function Dashboard() {
       }
 
       // Load Requests (Initial)
-      // FIX: Changed destructuring to correctly capture the JSON object
       const reqs = await fetch(`/api/requests?dj_id=${data.user.id}`).then(res => res.json());
       
-      // Added a defensive check to ensure reqs and reqs.requests exist
       if (reqs && reqs.requests) {
          setRequests(reqs.requests);
       } else {
@@ -301,11 +300,18 @@ export default function Dashboard() {
                     {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
                   </button>
                 ))}
-                {filteredRequests.length > 0 && (
-                  <button onClick={clearAllFiltered} className="ml-auto px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg">
-                    <Trash2 size={16} />
-                  </button>
-                )}
+                {/* FIX: Jitter fix: Always render the clear button space but hide content if no requests */}
+                <button 
+                  onClick={clearAllFiltered} 
+                  disabled={filteredRequests.length === 0}
+                  className={`ml-auto px-3 py-2 rounded-lg transition-colors ${
+                    filteredRequests.length > 0 
+                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' 
+                      : 'bg-transparent text-transparent pointer-events-none' // Hide but reserve space
+                  }`}
+                >
+                  <Trash2 size={16} />
+                </button>
              </div>
 
              <RequestList 
