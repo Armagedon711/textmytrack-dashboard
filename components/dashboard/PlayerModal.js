@@ -69,7 +69,17 @@ export default function PlayerModal({
       if (playerRef.current) {
         try {
           playerRef.current.loadVideoById(videoId);
-          setIsPlaying(true);
+          // CRITICAL FIX: Explicitly call playVideo after a short delay to ensure autoplay works when minimized
+          setTimeout(() => {
+            if (isSubscribed && playerRef.current) {
+              try {
+                playerRef.current.playVideo();
+                setIsPlaying(true);
+              } catch (e) {
+                console.error("Error starting playback:", e);
+              }
+            }
+          }, 200);
         } catch (e) {
           console.error("Error loading video:", e);
         }
@@ -81,7 +91,7 @@ export default function PlayerModal({
         videoId: videoId,
         playerVars: {
           autoplay: 1,
-          mute: isMuted ? 1 : 0, 
+          mute: 1, // Always start muted to avoid autoplay restrictions
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
