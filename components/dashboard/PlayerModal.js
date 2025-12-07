@@ -69,7 +69,6 @@ export default function PlayerModal({
       
       const loadVideoAndPlay = (target) => {
         try {
-          // FIX: Explicitly stop video before loading new one for clean transition
           if (target.stopVideo) target.stopVideo(); 
           
           target.loadVideoById(videoId);
@@ -88,7 +87,6 @@ export default function PlayerModal({
         }
       };
       
-      // If player exists, just load the new video
       if (playerRef.current) {
         loadVideoAndPlay(playerRef.current);
         if (videoId !== playerRef.current.getVideoData().video_id) {
@@ -97,7 +95,6 @@ export default function PlayerModal({
         return;
       }
 
-      // Create player only once
       playerRef.current = new window.YT.Player(PLAYER_ID, {
         videoId: videoId,
         playerVars: {
@@ -216,9 +213,8 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX: Adjusted transform to align perfectly with the placeholder, removing black space.
-          // Calculation: -50% (to center) - 108px (half the control panel height)
-          transform: 'translateX(-50%) translateY(calc(-50% - 108px))', 
+          // FIX: Adjusted transform slightly to eliminate the last bit of black space above the video.
+          transform: 'translateX(-50%) translateY(calc(-50% - 110px))', 
         } : undefined}
       >
         <div 
@@ -234,6 +230,8 @@ export default function PlayerModal({
             ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
         }`}
+        // FIX: Minimize player when clicking the backdrop, but only if not minimized already
+        onClick={!isMinimized ? onMinimize : undefined}
       >
         <div
           className={`relative bg-[#12121a] shadow-2xl border border-white/5 ${
@@ -241,6 +239,8 @@ export default function PlayerModal({
               ? "h-auto rounded-t-xl rounded-b-none w-full"
               : "w-full max-w-4xl h-full max-h-[90vh] rounded-xl"
           }`}
+          // Stop propagation so clicks inside the modal don't minimize it
+          onClick={(e) => e.stopPropagation()}
         >
           
           {/* Maximized Player UI */}
@@ -262,13 +262,13 @@ export default function PlayerModal({
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 pr-4">
-                    {/* FIX: Reduced margin to remove excess space between title/artist */}
                     <h2 className="text-xl sm:text-2xl font-bold text-white mb-0 truncate">{request.title}</h2> 
                     <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
                   </div>
                   
                   {/* Min/Close Buttons */}
                   <div className="flex gap-3 flex-shrink-0 pt-1">
+                    {/* FIX: Minimize button added here */}
                     <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors" title="Minimize Player">
                       <Minimize2 size={18} />
                     </button>
