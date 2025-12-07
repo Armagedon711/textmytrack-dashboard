@@ -40,14 +40,17 @@ export default function RequestList({
   return (
     <div className="space-y-2 sm:space-y-3">
       {requests.map((req, index) => {
-        // Platform URL logic
-        let hasUrl = false;
-        if (platformPreference === 'youtube') hasUrl = req.youtube_video_id || req.url;
-        else if (platformPreference === 'spotify') hasUrl = req.spotify_url;
-        else if (platformPreference === 'apple') hasUrl = req.apple_url;
         
-        // If youtube_video_id exists, we treat it as playable in our modal regardless of preference
-        const isPlayableInApp = !!req.youtube_video_id; 
+        // 1. Determine if a play button is justified based on the selected platform
+        let hasExternalUrlForSelectedPlatform = false;
+        if (platformPreference === 'youtube') hasExternalUrlForSelectedPlatform = req.youtube_video_id || req.url;
+        else if (platformPreference === 'spotify') hasExternalUrlForSelectedPlatform = req.spotify_url;
+        else if (platformPreference === 'apple') hasExternalUrlForSelectedPlatform = req.apple_url;
+        else if (platformPreference === 'soundcloud') hasExternalUrlForSelectedPlatform = req.soundcloud_url;
+        
+        // 2. The flag that tells handlePlayRequest whether to open the internal modal or external tab
+        // CRITICAL FIX: The internal player is only used if YouTube is the preference AND the YouTube ID exists.
+        const shouldUseInternalPlayer = platformPreference === 'youtube' && !!req.youtube_video_id; 
 
         return (
           <RequestItem
@@ -55,8 +58,9 @@ export default function RequestList({
             req={req}
             index={index}
             isCurrentlyPlaying={currentPlayingId === req.id}
-            hasUrl={isPlayableInApp || hasUrl}
-            onPlay={(r) => onPlay(r, isPlayableInApp)} // Pass flag if it should open modal
+            // The button should appear if the internal player can be used OR if an external URL is available for the preferred platform
+            hasUrl={shouldUseInternalPlayer || hasExternalUrlForSelectedPlatform}
+            onPlay={(r) => onPlay(r, shouldUseInternalPlayer)} // Pass the correct flag to page.js's handlePlayRequest
             onUpdateStatus={onUpdateStatus}
             onDelete={onDelete}
           />
