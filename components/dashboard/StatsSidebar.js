@@ -3,14 +3,20 @@ import { Phone, Power, Circle, CheckCircle2 } from "lucide-react";
 // Utility function to format phone number
 const formatPhoneNumber = (phoneNumber) => {
   if (!phoneNumber) return "...";
-  // Remove all non-digit characters
-  const cleaned = ('' + phoneNumber).replace(/\D/g, '');
+  // CRITICAL FIX: Strip +1 and any non-digit characters first
+  let cleaned = ('' + phoneNumber).replace(/\D/g, '');
+  
+  // Remove leading '1' if the length is 11 (e.g., +18557104644 -> 18557104644)
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      cleaned = cleaned.substring(1);
+  }
+  
   // Match a pattern for 10 digits
   const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
   if (match) {
     return '(' + match[1] + ') ' + match[2] + '-' + match[3];
   }
-  return phoneNumber;
+  return phoneNumber; // Return original if it doesn't match 10 digits
 };
 
 export default function StatsSidebar({ 
