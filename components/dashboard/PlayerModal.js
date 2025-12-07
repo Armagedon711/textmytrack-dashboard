@@ -52,6 +52,18 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
+  // NEW: Effect to minimize player by default when a new video starts.
+  useEffect(() => {
+    if (videoId && !isMinimized) {
+        // Small delay to ensure smooth transition after modal mounts
+        const timer = setTimeout(() => {
+            onMinimize();
+        }, 300); 
+        return () => clearTimeout(timer);
+    }
+  }, [videoId, isMinimized, onMinimize]); 
+
+
   // Initialize player ONCE, then just load new videos
   useEffect(() => {
     if (!videoId) return;
@@ -186,16 +198,14 @@ export default function PlayerModal({
 
   return (
     <>
-      {/* 
-        FIX: Wrapper container that handles ALL positioning.
-        The inner div (PLAYER_ID) gets replaced by YouTube's iframe,
-        so we can't rely on its classes for positioning.
+      {/* Video Container (Fixed) - Remains largely the same to manage persistent iframe
+        Adjusted max-width for better two-column layout symmetry.
       */}
       <div 
         className={`fixed bg-black transition-all duration-300 overflow-hidden ${
           isMinimized 
             ? "w-[1px] h-[1px] opacity-0 pointer-events-none top-0 left-0" 
-            : "rounded-t-xl z-[60]"
+            : "rounded-tl-xl rounded-bl-xl z-[60]"
         }`}
         style={!isMinimized ? {
           width: 'calc(100vw - 32px)',
@@ -203,7 +213,8 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          transform: 'translateX(-50%) translateY(calc(-50% - 60px))', // Offset up to account for controls below
+          // NEW: Adjust transform to align video with the new centered content block
+          transform: 'translateX(calc(-50% - 150px)) translateY(-50%)', // Shift left by half the sidebar width (300px/2) on wide screens
         } : undefined}
       >
         {/* This div gets replaced by YouTube iframe - it just fills the container */}
@@ -231,102 +242,113 @@ export default function PlayerModal({
           
           {/* Maximized Player Controls and Info */}
           {!isMinimized && (
-            <div className="flex flex-col h-full relative"> 
+            // NEW: Main Flex Container for Two-Column Layout (Desktop) / Stacked Layout (Mobile)
+            <div className="flex flex-col lg:flex-row h-full relative"> 
               
-              {/* Video Container - transparent placeholder, actual video is in the fixed container above */}
-              <div className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden">
-                {!playerRef.current && (
-                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
-                    <Music size={32} className="text-gray-500 animate-spin" />
+              {/* === LEFT SIDE: Video Placeholder & Main Playback Controls === */}
+              <div className="lg:w-2/3 flex flex-col flex-shrink-0">
+                  
+                  {/* Video Container - transparent placeholder, actual video is in the fixed container above */}
+                  <div className="w-full relative aspect-video bg-black rounded-tl-xl overflow-hidden flex-shrink-0">
+                    {!playerRef.current && (
+                      <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+                        <Music size={32} className="text-gray-500 animate-spin" />
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {/* Main Playback Controls (Center) - placed below video on maximized view */}
+                  <div className="flex gap-3 p-4 sm:p-6 bg-[#16161f] border-t border-white/5 justify-center flex-shrink-0">
+                    <button onClick={onSkip} className="p-3 hover:bg-white/10 rounded-xl text-white transition-colors" title="Skip to Next">
+                      <SkipForward size={24} />
+                    </button>
+                    <button onClick={handleTogglePlay} className="p-4 bg-pink-600 hover:bg-pink-700 rounded-xl text-white transition-colors" title={isPlaying ? "Pause" : "Play"}>
+                      {isPlaying ? <Pause size={24} className="fill-white" /> : <Play size={24} className="fill-white" />}
+                    </button>
+                    <button onClick={onToggleMute} className={`p-3 rounded-xl transition-colors ${isMuted ? "bg-white/10 text-gray-400 hover:bg-white/20" : "bg-white/20 text-white hover:bg-white/30"}`} title={isMuted ? "Unmute" : "Mute"}>
+                      {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                    </button>
+                  </div>
               </div>
 
-              {/* Controls and Info (Maximized) */}
-              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
-                
-                {/* Song Info */}
-                <div className="mb-4">
-                  <h2 className="text-xl sm:text-2xl font-bold text-white mb-1 truncate">{request.title}</h2>
-                  <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
-                  <p className="text-xs text-gray-500 mt-1">Requested by: <span className="text-gray-300 font-medium">{request.requestedBy}</span></p>
-                </div>
 
-                {/* Status and Next Song */}
-                <div className="flex justify-between items-center mb-6 text-sm">
-                  <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    request.status === 'approved' ? 'bg-blue-500/10 text-blue-400' :
-                    request.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
-                    'bg-gray-500/10 text-gray-400'
-                  }`}>
-                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+              {/* === RIGHT SIDE: Info & Actions Sidebar === */}
+              <div className="lg:w-1/3 p-4 sm:p-6 flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-white/5 flex-grow"> 
+                
+                {/* Top: Min/Close Buttons */}
+                <div className="flex gap-3 justify-end mb-4">
+                  <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors">
+                    <Minimize2 size={18} />
+                  </button>
+                  <button onClick={onClose} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                {/* Middle: Song Info & Status */}
+                <div className="flex-1 overflow-y-auto mb-6">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">{request.title}</h2>
+                  <p className="text-md sm:text-lg text-gray-400 mb-4">{request.artist}</p>
+                  
+                  {/* Status */}
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-500 mb-2">Requested by: <span className="text-gray-300 font-medium">{request.requestedBy}</span></p>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      request.status === 'approved' ? 'bg-blue-500/10 text-blue-400' :
+                      request.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
+                      'bg-gray-500/10 text-gray-400'
+                    }`}>
+                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                    </span>
                   </div>
+
+                  {/* Up Next (NEW: More Prominent) */}
                   {nextSong && (
-                    <div className="flex items-center gap-2 text-gray-500">
-                      <span className="text-xs">Up next:</span>
-                      <span className="text-gray-300 font-medium truncate max-w-[150px]">{nextSong.title}</span>
+                    <div className="mt-6 p-3 bg-white/5 rounded-lg border border-white/10">
+                      <p className="text-xs text-gray-500 mb-1">Up Next</p>
+                      <span className="font-semibold text-white truncate block">{nextSong.title}</span>
+                      <span className="text-xs text-gray-400 truncate block">{nextSong.artist}</span>
                     </div>
                   )}
                 </div>
                 
-                {/* Main Controls */}
-                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                  
-                  {/* Left: Actions */}
-                  <div className="flex gap-3 w-full sm:w-auto">
-                    <button 
-                      onClick={onApprove} 
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors w-1/2 sm:w-auto justify-center"
-                      title="Approve and Play Next"
-                    >
-                      <ThumbsUp size={18} /> <span className="hidden sm:block">Approve</span>
-                    </button>
-                    <button 
-                      onClick={onMarkPlayed} 
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors w-1/2 sm:w-auto justify-center"
-                      title="Mark as Played"
-                    >
-                      <Check size={18} /> <span className="hidden sm:block">Played</span>
-                    </button>
-                  </div>
-
-                  {/* Center: Playback */}
-                  <div className="flex gap-3 p-3 bg-white/5 rounded-xl w-full sm:w-auto justify-center">
-                    <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-white" title="Skip to Next">
-                      <SkipForward size={20} />
-                    </button>
-                    <button onClick={handleTogglePlay} className="p-2 bg-pink-600 hover:bg-pink-700 rounded-lg text-white transition-colors" title={isPlaying ? "Pause" : "Play"}>
-                      {isPlaying ? <Pause size={20} className="fill-white" /> : <Play size={20} className="fill-white" />}
-                    </button>
-                    <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "bg-white/10 text-gray-400 hover:bg-white/20" : "bg-white/20 text-white hover:bg-white/30"}`} title={isMuted ? "Unmute" : "Mute"}>
-                      {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                    </button>
-                  </div>
-                  
-                  {/* Right: Min/Close */}
-                  <div className="flex gap-3 w-full sm:w-auto justify-center sm:justify-end">
-                    <button onClick={onMinimize} className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-colors">
-                      <Minimize2 size={20} />
-                    </button>
-                    <button onClick={onClose} className="p-3 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-colors">
-                      <X size={20} />
-                    </button>
-                  </div>
+                {/* Bottom: Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t border-white/5 flex-shrink-0">
+                  <button 
+                    onClick={onApprove} 
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors flex-1 justify-center"
+                    title="Approve and Play Next"
+                  >
+                    <ThumbsUp size={18} /> Approve
+                  </button>
+                  <button 
+                    onClick={onMarkPlayed} 
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors flex-1 justify-center"
+                    title="Mark as Played"
+                  >
+                    <Check size={18} /> Played
+                  </button>
                 </div>
+
               </div>
             </div>
           )}
 
-          {/* Minimized Player */}
+          {/* Minimized Player (Enhanced) */}
           {isMinimized && request && (
             <div className="flex items-center p-3 w-full">
               <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={onMaximize}>
+                {/* NEW: Thumbnail Display */}
                 <div 
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-300 ${
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden ${
                     isPlaying ? 'bg-pink-500/20' : 'bg-gray-500/10'
                   }`}
                 >
-                   <Music size={16} className={`${isPlaying ? 'text-pink-400' : 'text-gray-400'}`} />
+                   {request.thumbnail ? (
+                       <img src={request.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
+                   ) : (
+                       <Music size={16} className={`${isPlaying ? 'text-pink-400' : 'text-gray-400'}`} />
+                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-white text-sm truncate">{request.title}</h4>
@@ -334,8 +356,11 @@ export default function PlayerModal({
                 </div>
               </div>
               
-              {/* Minimized Controls */}
+              {/* Minimized Controls (NEW: Added Skip Button) */}
               <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+                <button onClick={onSkip} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white" title="Skip to Next">
+                  <SkipForward size={16} />
+                </button>
                 <button 
                   onClick={handleTogglePlay} 
                   className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white"
