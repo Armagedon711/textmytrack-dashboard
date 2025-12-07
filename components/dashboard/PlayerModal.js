@@ -213,9 +213,9 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX: Adjusted transform to align perfectly with the placeholder, removing black space.
-          // Using a slightly smaller offset (109px instead of 110px) to compensate for potential rounding errors or container borders.
-          transform: 'translateX(-50%) translateY(calc(-50% - 109px))', 
+          // FIX: Adjusted offset to 86px to better align with the tighter controls layout
+          // and eliminate black space above.
+          transform: 'translateX(-50%) translateY(calc(-50% - 86px))', 
         } : undefined}
       >
         <div 
@@ -258,10 +258,12 @@ export default function PlayerModal({
               </div>
 
               {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
-              <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
+              {/* FIX: Reduced padding to p-4 to minimize vertical space */}
+              <div className="flex-1 p-4 flex flex-col justify-between"> 
                 
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
-                <div className="flex justify-between items-start mb-2">
+                {/* FIX: Reduced bottom margin to mb-1 to bring text closer */}
+                <div className="flex justify-between items-start mb-1">
                   <div className="min-w-0 pr-4">
                     <h2 className="text-xl sm:text-2xl font-bold text-white mb-0 truncate">{request.title}</h2> 
                     <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
@@ -279,7 +281,7 @@ export default function PlayerModal({
                 </div>
 
                 {/* Middle Row: Metadata (User, Status, Tags, Up Next) */}
-                <div className="flex justify-between items-center mb-6 text-sm flex-wrap gap-3">
+                <div className="flex justify-between items-center mb-4 text-sm flex-wrap gap-3">
                   
                   {/* Requested By & Status Badge + Tags */}
                   <div className="flex flex-col gap-1">
