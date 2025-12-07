@@ -205,8 +205,8 @@ export default function Dashboard() {
 
 
   return (
-    // FIX: Add overflow-y-scroll to the main container to prevent content shift when the scrollbar appears
-    <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f] overflow-y-scroll">
+    // REVERTED FIX: Removed overflow-y-scroll to fix double scrollbar issue
+    <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
       {/* ENHANCED BACKGROUND: Increased size, blur, and opacity for a more pronounced glass morphism effect */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Top-Left Glow (Purple/Cyan Hue) */}
