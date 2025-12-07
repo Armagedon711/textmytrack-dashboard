@@ -13,65 +13,39 @@ import SettingsModal from "../components/dashboard/SettingsModal";
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
-
-// Platform Config - mapped for the UI
+// FIX: Replace broken unicode icons (Issue #3) with standard emojis
 const PLATFORMS = {
-  youtube: { 
-    name: "YouTube", 
-    icon: "▶️", 
-    bgColor: "bg-red-500/10", 
-    borderColor: "border-red-500/30",
-    textColor: "text-red-400"
-  },
-  spotify: { 
-    name: "Spotify", 
-    icon: "🟢", 
-    bgColor: "bg-green-500/10", 
-    borderColor: "border-green-500/30",
-    textColor: "text-green-400" 
-  },
-  apple: { 
-    name: "Apple Music", 
-    icon: "", 
-    bgColor: "bg-pink-500/10", 
-    borderColor: "border-pink-500/30",
-    textColor: "text-pink-400" 
-  },
-  soundcloud: { 
-    name: "SoundCloud", 
-    icon: "☁️", 
-    bgColor: "bg-orange-500/10", 
-    borderColor: "border-orange-500/30",
-    textColor: "text-orange-400" 
-  },
+  youtube: { name: "YouTube", icon: "▶️", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
+  spotify: { name: "Spotify", icon: "🟢", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
+  apple: { name: "Apple Music", icon: "", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
+  soundcloud: { name: "SoundCloud", icon: "☁️", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
 };
-
 const TABS = [
-  { key: "pending", label: "Queue" },
+  { key: "pending", label: "Requests" },
   { key: "approved", label: "Approved" },
   { key: "rejected", label: "Rejected" },
-  { key: "played", label: "History" },
-  { key: "all", label: "All Requests" },
+  { key: "played", label: "Played" },
+  { key: "all", label: "All" },
 ];
 
 export default function Dashboard() {
   const supabase = supabaseBrowserClient();
   const router = useRouter();
 
-  // --- Data State ---
+  // Data State
   const [requests, setRequests] = useState([]);
   const [djProfile, setDjProfile] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // --- UI State ---
+  // UI State
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
 
-  // --- Player State ---
-  const [videoModalId, setVideoModalId] = useState(null);
-  const [playingRequestId, setPlayingRequestId] = useState(null);
+  // Player State
+  const [videoModalId, setVideoModalId] = useState(null); // The Video ID currently in modal
+  const [playingRequestId, setPlayingRequestId] = useState(null); // The Request ID
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [autoPlay, setAutoPlay] = useState(true);
@@ -102,7 +76,8 @@ export default function Dashboard() {
     return queue[currentIndex + 1] || null;
   }, [requests, currentPlayingRequest]);
 
-  // --- Initialization ---
+
+  // --- Data Loading & Auth ---
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
@@ -117,23 +92,23 @@ export default function Dashboard() {
         if (profile.preferred_platform) setSelectedPlatform(profile.preferred_platform);
       }
 
-      // Load Requests
-      try {
-        const res = await fetch(`/api/requests?dj_id=${data.user.id}`);
-        const json = await res.json();
-        if (json && json.requests) {
-           setRequests(json.requests);
-        }
-      } catch (e) {
-        console.error("Failed to load requests:", e);
-      } finally {
-        setLoading(false);
+      // Load Requests (Initial)
+      const reqs = await fetch(`/api/requests?dj_id=${data.user.id}`).then(res => res.json());
+      
+      if (reqs && reqs.requests) {
+         setRequests(reqs.requests);
+      } else {
+         console.error("Failed to load initial requests from API:", reqs);
+         setRequests([]);
       }
+      
+      setLoading(false);
     };
     init();
   }, []);
 
-  // --- Realtime Subscription ---
+
+  // --- Realtime Subscription (Optimized) ---
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel("realtime-requests")
@@ -149,43 +124,32 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel);
   }, [user]);
 
-  // --- Action Handlers ---
+
+  // --- Actions ---
   const handleUpdateStatus = async (id, status) => {
     // Optimistic Update
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    try {
-      await fetch("/api/update-request", {
-         method: "POST", 
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ id, status })
-      });
-    } catch (e) {
-      console.error("Error updating status", e);
-    }
+    // NOTE: Using /api/update-request for a POST request to update status
+    await fetch("/api/update-request", { // Changed to use update-request endpoint
+       method: "POST", headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ id, status })
+    });
   };
 
   const handleDelete = async (id) => {
-    if(!confirm("Are you sure you want to remove this request?")) return;
+    if(!confirm("Delete request?")) return;
     setRequests(prev => prev.filter(r => r.id !== id));
-    try {
-      await fetch("/api/requests-delete", {
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-      });
-    } catch(e) {
-      console.error("Error deleting", e);
-    }
+    await fetch("/api/requests-delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
   };
 
   const clearAllFiltered = async () => {
-    if(!confirm(`Delete all ${filteredRequests.length} ${filterStatus} items? This cannot be undone.`)) return;
+    if(!confirm(`Delete all ${filteredRequests.length} items?`)) return;
     const ids = filteredRequests.map(r => r.id);
-    
-    // Optimistic UI clear
     setRequests(prev => prev.filter(r => !ids.includes(r.id)));
-    
-    // Batch delete (simulated via loop for now)
+    // In production, use a batch delete endpoint
     ids.forEach(id => fetch("/api/requests-delete", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id })
@@ -215,16 +179,16 @@ export default function Dashboard() {
 
   const handleNextSong = useCallback(() => {
     if (autoPlay && nextSong) {
-      // Mark current as played
+      // Mark current played
       if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
       
-      // Small delay to ensure player re-initializes cleanly
+      // Play next (small delay to reset player)
       setTimeout(() => {
         setPlayingRequestId(nextSong.id);
         setVideoModalId(nextSong.youtube_video_id);
-      }, 150);
+      }, 100);
     } else {
-       // Stop playback
+       // Stop
        setVideoModalId(null);
        setPlayingRequestId(null);
     }
@@ -232,14 +196,10 @@ export default function Dashboard() {
 
 
   return (
-    <main className="min-h-screen bg-[#09090b] text-white selection:bg-pink-500/30">
-      {/* Background Ambience */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-pink-500/5 rounded-full blur-[100px]" />
-         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[100px]" />
-      </div>
+    <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
+      <div className="fixed inset-0 pointer-events-none bg-purple-500/5 blur-[100px] rounded-full w-[500px] h-[500px] top-0 left-0" />
 
-      {/* Modals */}
+      {/* Settings Modal */}
       <SettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)}
@@ -248,6 +208,7 @@ export default function Dashboard() {
         universalNumber={UNIVERSAL_NUMBER}
       />
 
+      {/* Persistent Player */}
       <PlayerModal 
         videoId={videoModalId}
         request={currentPlayingRequest}
@@ -260,7 +221,7 @@ export default function Dashboard() {
         onMaximize={() => setIsMinimized(false)}
         onToggleMute={() => setIsMuted(!isMuted)}
         onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
-        onTogglePlay={() => {}} 
+        onTogglePlay={() => {}} // Internal state handled in component
         onSkip={handleNextSong}
         onApprove={() => {
             if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "approved");
@@ -273,43 +234,32 @@ export default function Dashboard() {
         onVideoEnd={handleNextSong}
       />
 
-      {/* Main Layout */}
-      <div className={`relative max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 transition-all duration-500 ${videoModalId && isMinimized ? "pb-32" : ""}`}>
+      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-32" : ""}`}>
         
         {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-zinc-800 to-zinc-900 border border-white/5 flex items-center justify-center shadow-2xl group">
-              <Disc3 size={24} className="text-pink-500 group-hover:rotate-180 transition-transform duration-700 ease-out" />
+        <header className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+              <Disc3 size={24} className="text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
-              <p className="text-sm text-zinc-400">Manage your set list in real-time</p>
+              <h1 className="text-2xl font-bold">TextMyTrack</h1>
+              <p className="text-xs text-gray-500">DJ Dashboard</p>
             </div>
           </div>
-          
-          <div className="flex gap-3">
-             <button 
-                onClick={() => setShowSettings(true)}
-                className="px-4 py-2 text-sm font-medium text-zinc-300 bg-[#18181b] border border-white/5 rounded-full hover:bg-white/5 hover:text-white transition-all flex items-center gap-2"
-             >
-                <Settings size={16} /> <span>Configure</span>
-             </button>
-             <button 
-                onClick={() => { supabase.auth.signOut(); router.push("/login"); }}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#18181b] border border-white/5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                title="Logout"
-             >
-                <LogOut size={16} />
-             </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowSettings(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
+              <Settings size={18} /> <span className="hidden sm:block">Settings</span>
+            </button>
+            <button onClick={() => { supabase.auth.signOut(); router.push("/login"); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
+              <LogOut size={18} /> <span className="hidden sm:block">Logout</span>
+            </button>
           </div>
         </header>
 
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* LEFT: Stats & Control (3 Columns) */}
-          <div className="lg:col-span-3 lg:sticky lg:top-8 lg:h-fit space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar */}
+          <div className="hidden lg:block lg:col-span-1">
              <StatsSidebar 
                stats={stats}
                djProfile={djProfile}
@@ -322,64 +272,60 @@ export default function Dashboard() {
              />
           </div>
 
-          {/* RIGHT: Request Feed (9 Columns) */}
-          <div className="lg:col-span-9">
-             
-             {/* Tab Navigation */}
-             <div className="flex items-center border-b border-white/5 mb-6">
-                <nav className="flex gap-6 overflow-x-auto scrollbar-hide">
-                  {TABS.map(tab => {
-                    const isActive = filterStatus === tab.key;
-                    return (
-                      <button 
-                        key={tab.key}
-                        onClick={() => setFilterStatus(tab.key)}
-                        className={`group pb-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap px-1 flex items-center gap-2 ${
-                          isActive 
-                          ? "border-pink-500 text-white" 
-                          : "border-transparent text-zinc-500 hover:text-zinc-300"
-                        }`}
-                      >
-                        {tab.label} 
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full transition-colors ${
-                          isActive ? 'bg-pink-500/20 text-pink-400' : 'bg-white/5 text-zinc-500 group-hover:bg-white/10'
-                        }`}>
-                          {tab.key === 'all' ? stats.total : stats[tab.key]}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </nav>
-                
-                {/* Clear Button */}
-                <div className="ml-auto pl-4">
-                  {filteredRequests.length > 0 && (
-                     <button 
-                        onClick={clearAllFiltered}
-                        className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1.5 px-2 py-1 rounded hover:bg-red-500/10"
-                     >
-                       <Trash2 size={12} /> <span className="hidden sm:inline">Clear List</span>
-                     </button>
-                  )}
-                </div>
-             </div>
-
-             {/* Request List Container */}
-             <div className="bg-[#18181b]/50 border border-white/5 rounded-2xl p-2 min-h-[500px] backdrop-blur-sm">
-                <RequestList 
-                  requests={filteredRequests}
-                  loading={loading}
-                  filterStatus={filterStatus}
-                  currentPlayingId={playingRequestId}
-                  onPlay={handlePlayRequest}
-                  onUpdateStatus={handleUpdateStatus}
-                  onDelete={handleDelete}
-                  platformPreference={selectedPlatform}
-                  tabLabel={TABS.find(t => t.key === filterStatus)?.label}
-                />
+          {/* Mobile Sidebar Replacement (simplified) */}
+          <div className="lg:hidden mb-4">
+             {/* Render simplified mobile stats here if needed, or rely on StatsSidebar adapting to mobile (it currently has desktop styles) */}
+             <div className="p-4 bg-[#12121a] rounded-xl border border-white/5 flex justify-between items-center">
+                <span className="text-sm text-gray-400">Status</span>
+                <button onClick={toggleAccepting} className={`text-xs px-2 py-1 rounded ${djProfile?.accepting_requests ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                   {djProfile?.accepting_requests ? "Live" : "Paused"}
+                </button>
              </div>
           </div>
 
+          {/* Main List */}
+          <div className="lg:col-span-3">
+             {/* Tabs */}
+             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                {TABS.map(tab => (
+                  <button 
+                    key={tab.key}
+                    onClick={() => setFilterStatus(tab.key)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                      filterStatus === tab.key 
+                      ? "bg-white/10 border-white/20 text-white" 
+                      : "bg-transparent border-transparent text-gray-400 hover:bg-white/5"
+                    }`}
+                  >
+                    {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
+                  </button>
+                ))}
+                {/* FIX: Jitter fix: Always render the clear button space but hide content if no requests */}
+                <button 
+                  onClick={clearAllFiltered} 
+                  disabled={filteredRequests.length === 0}
+                  className={`ml-auto px-3 py-2 rounded-lg transition-colors ${
+                    filteredRequests.length > 0 
+                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' 
+                      : 'bg-transparent text-transparent pointer-events-none' // Hide but reserve space
+                  }`}
+                >
+                  <Trash2 size={16} />
+                </button>
+             </div>
+
+             <RequestList 
+               requests={filteredRequests}
+               loading={loading}
+               filterStatus={filterStatus}
+               currentPlayingId={playingRequestId}
+               onPlay={handlePlayRequest}
+               onUpdateStatus={handleUpdateStatus}
+               onDelete={handleDelete}
+               platformPreference={selectedPlatform}
+               tabLabel={TABS.find(t => t.key === filterStatus)?.label}
+             />
+          </div>
         </div>
       </div>
     </main>

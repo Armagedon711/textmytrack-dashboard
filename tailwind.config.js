@@ -3,29 +3,25 @@ module.exports = {
   darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",
+    "./app/auth/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
+    "./lib/**/*.{js,ts,jsx,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
       colors: {
-        background: "#09090b", // Zinc 950 - darker, flatter
-        surface: "#18181b",    // Zinc 900
-        surfaceHighlight: "#27272a", // Zinc 800
-        primary: "#ec4899",    // Keep pink, but use sparingly
-        secondary: "#8b5cf6",  // Violet
-        subtle: "#71717a",     // Zinc 500
+        "brand-pink": "#ff4da3",
+        "brand-purple": "#b366ff",
+        "brand-blue": "#4da3ff",
+        "brand-glow": "#c07dff",
       },
-      fontFamily: {
-        // Assume you might add Inter or Geist later, standard sans for now
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+      boxShadow: {
+        glow: "0 0 20px rgba(192, 125, 255, 0.7)",
       },
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'glass': 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+      dropShadow: {
+        glow: "0 0 6px rgba(255, 77, 163, 0.7)",
       },
-      animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      }
     },
   },
   plugins: [],
