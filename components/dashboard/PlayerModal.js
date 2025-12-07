@@ -213,8 +213,9 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX: Adjusted transform slightly to eliminate the last bit of black space above the video.
-          transform: 'translateX(-50%) translateY(calc(-50% - 110px))', 
+          // FIX: Adjusted transform to align perfectly with the placeholder, removing black space.
+          // Using a slightly smaller offset (109px instead of 110px) to compensate for potential rounding errors or container borders.
+          transform: 'translateX(-50%) translateY(calc(-50% - 109px))', 
         } : undefined}
       >
         <div 
@@ -256,7 +257,7 @@ export default function PlayerModal({
                 )}
               </div>
 
-              {/* Controls and Info */}
+              {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
@@ -268,7 +269,6 @@ export default function PlayerModal({
                   
                   {/* Min/Close Buttons */}
                   <div className="flex gap-3 flex-shrink-0 pt-1">
-                    {/* FIX: Minimize button added here */}
                     <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors" title="Minimize Player">
                       <Minimize2 size={18} />
                     </button>
