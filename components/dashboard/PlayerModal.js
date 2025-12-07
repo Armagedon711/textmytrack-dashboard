@@ -173,18 +173,10 @@ export default function PlayerModal({
   
   // Handler for Reject button (since we need to pass a status)
   const handleReject = () => {
-    // Assuming onApprove/onMarkPlayed is designed to handle status updates for the current request
-    // We'll call onApprove with a status of 'rejected' if we had a dedicated handler, 
-    // but since we only have onApprove/onMarkPlayed, we'll assume a new prop is needed, 
-    // or we can use onApprove to signify an action and handle status update in the parent component, 
-    // but for now, we'll assume a dedicated handler for status updates exists or create a simple dummy.
-    // For this demonstration, we'll assume a new prop `onReject` is passed down, or we use a simplified version:
-    if (request && onMarkPlayed) {
-        // Since we don't have an onReject prop, we'll use a placeholder for now.
-        // In a real app, you would pass an onReject={ (req) => handleUpdateStatus(req.id, "rejected") }
-        alert(`Rejecting request ID: ${request.id}`);
-        onSkip(); // Skip to the next song after rejection
-    }
+    // This is a placeholder; in the parent component (page.js), 
+    // you would need to implement onUpdateStatus(request.id, "rejected") 
+    alert(`Rejecting request ID: ${request.id}`);
+    onSkip(); // Skip to the next song after rejection
   };
 
   if (!videoId || !request) return null;
@@ -204,7 +196,7 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // Transform adjusted to perfectly center the video on the aspect-ratio placeholder
+          // Transform adjusted to align the bottom of the video with the top of the controls
           transform: 'translateX(-50%) translateY(calc(-50% - 108px))', 
         } : undefined}
       >
@@ -234,27 +226,8 @@ export default function PlayerModal({
           {!isMinimized && (
             <div className="flex flex-col h-full relative"> 
               
-              {/* Header with Title and Close/Min buttons */}
-              <div className="p-4 sm:p-6 pb-2 flex justify-between items-start border-b border-white/5 bg-[#16161f] rounded-t-xl">
-                 {/* Prominent Title/Artist */}
-                 <div className="min-w-0 pr-4">
-                   <h2 className="text-xl sm:text-2xl font-bold text-white mb-0.5 truncate">{request.title}</h2>
-                   <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
-                 </div>
-                 
-                 {/* Min/Close Buttons (Moved to header) */}
-                 <div className="flex gap-3 flex-shrink-0 pt-1">
-                   <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors" title="Minimize Player">
-                     <Minimize2 size={18} />
-                   </button>
-                   <button onClick={onClose} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 transition-colors" title="Stop and Close">
-                     <X size={18} />
-                   </button>
-                 </div>
-              </div>
-
               {/* Video Container - transparent placeholder */}
-              <div className="w-full relative aspect-video bg-black overflow-hidden">
+              <div className="w-full relative aspect-video bg-black rounded-t-xl overflow-hidden">
                 {!playerRef.current && (
                   <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
                     <Music size={32} className="text-gray-500 animate-spin" />
@@ -262,10 +235,29 @@ export default function PlayerModal({
                 )}
               </div>
 
-              {/* Controls and Info (NEW LAYOUT IMPLEMENTATION) */}
+              {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
-                {/* Top Row: Metadata (User, Status, Up Next) */}
+                {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
+                <div className="flex justify-between items-start mb-4">
+                  {/* FIX 1: Move Title/Artist below the video */}
+                  <div className="min-w-0 pr-4">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white mb-0.5 truncate">{request.title}</h2>
+                    <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
+                  </div>
+                  
+                  {/* FIX 1: Move Min/Close Buttons below the video */}
+                  <div className="flex gap-3 flex-shrink-0 pt-1">
+                    <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors" title="Minimize Player">
+                      <Minimize2 size={18} />
+                    </button>
+                    <button onClick={onClose} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 transition-colors" title="Stop and Close">
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Middle Row: Metadata (User, Status, Up Next) */}
                 <div className="flex justify-between items-center mb-6 text-sm flex-wrap gap-3">
                   
                   {/* Requested By & Status Badge */}
@@ -292,29 +284,40 @@ export default function PlayerModal({
                 {/* Bottom Row: Actions (Left) and Playback (Right) */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pt-4 border-t border-white/5">
                   
-                  {/* Left: Actions (Approve, Played, Reject) */}
+                  {/* Left: Actions (Contextual Display) */}
                   <div className="flex gap-3 w-full sm:w-auto order-2 sm:order-1 justify-center">
-                    <button 
-                      onClick={onApprove} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors justify-center"
-                      title="Approve"
-                    >
-                      <ThumbsUp size={18} /> Approve
-                    </button>
-                    <button 
-                      onClick={onMarkPlayed} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors justify-center"
-                      title="Mark Played"
-                    >
-                      <Check size={18} /> Played
-                    </button>
-                     <button 
-                      onClick={handleReject} // Using local dummy handler
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-colors justify-center"
-                      title="Reject"
-                    >
-                      <Ban size={18} /> Reject
-                    </button>
+                    
+                    {/* Only show Approve/Reject if status is Pending */}
+                    {(request.status === 'pending') && (
+                      <>
+                        <button 
+                          onClick={onApprove} 
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors justify-center"
+                          title="Approve"
+                        >
+                          <ThumbsUp size={18} /> Approve
+                        </button>
+                        <button 
+                          onClick={handleReject} 
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-colors justify-center"
+                          title="Reject"
+                        >
+                          <Ban size={18} /> Reject
+                        </button>
+                      </>
+                    )}
+
+                    {/* Only show Mark Played if status is Approved (or Pending, if you want direct jump) */}
+                    {(request.status === 'approved' || request.status === 'pending') && (
+                      <button 
+                        onClick={onMarkPlayed} 
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors justify-center"
+                        title="Mark Played"
+                      >
+                        <Check size={18} /> Played
+                      </button>
+                    )}
+                    
                   </div>
 
                   {/* Right: Playback Controls (Skip, Play/Pause, Mute, AutoPlay) */}
@@ -337,7 +340,7 @@ export default function PlayerModal({
             </div>
           )}
 
-          {/* Minimized Player (Enhanced with Mute/Unmute) */}
+          {/* Minimized Player (Uses enhanced version from previous step) */}
           {isMinimized && request && (
             <div className="flex items-center p-3 w-full">
               <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={onMaximize}>
