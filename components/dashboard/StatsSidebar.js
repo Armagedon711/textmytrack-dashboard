@@ -40,7 +40,7 @@ export default function StatsSidebar({
           <div className="flex-1 min-w-0">
              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Request Line</p>
              {isHeadliner ? (
-               // Use formatted Twilio number for Headliner
+               // FIX: Use formattedTwilioNumber here
                <p className="text-lg font-bold text-white">{formattedTwilioNumber}</p>
              ) : (
                <div className="text-sm text-gray-300">

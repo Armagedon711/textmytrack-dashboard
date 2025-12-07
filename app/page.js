@@ -206,7 +206,11 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
-      <div className="fixed inset-0 pointer-events-none bg-purple-500/5 blur-[100px] rounded-full w-[500px] h-[500px] top-0 left-0" />
+      {/* ENHANCEMENT: Add a second, larger radial gradient for a cooler, multi-color effect */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 w-[600px] h-[600px] rounded-full bg-purple-500/5 blur-[150px] transform -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-0 right-0 w-[700px] h-[700px] rounded-full bg-pink-500/5 blur-[150px] transform translate-x-1/2 translate-y-1/2" />
+      </div>
 
       {/* Settings Modal */}
       <SettingsModal 
