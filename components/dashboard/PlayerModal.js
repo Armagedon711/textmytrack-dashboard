@@ -39,12 +39,10 @@ export default function PlayerModal({
 }) {
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isFirstSong, setIsFirstSong] = useState(true); // NEW: Track if it's the first song loaded
+  const [isFirstSong, setIsFirstSong] = useState(true); 
   
-  // CRITICAL FIX: Use refs for callbacks to avoid stale closures
   const onVideoEndRef = useRef(onVideoEnd);
   
-  // Keep the ref updated with the latest callback
   useEffect(() => {
     onVideoEndRef.current = onVideoEnd;
   }, [onVideoEnd]);
@@ -56,12 +54,12 @@ export default function PlayerModal({
   // Initialize player ONCE, then just load new videos
   useEffect(() => {
     if (!videoId) {
-        setIsFirstSong(true); // Reset flag when player closes
+        setIsFirstSong(true);
         return;
     }
 
     let initTimeout;
-    let isSubscribed = true; // Track if effect is still active
+    let isSubscribed = true;
 
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) {
@@ -71,6 +69,9 @@ export default function PlayerModal({
       
       const loadVideoAndPlay = (target) => {
         try {
+          // FIX: Explicitly stop video before loading new one for clean transition
+          if (target.stopVideo) target.stopVideo(); 
+          
           target.loadVideoById(videoId);
           setTimeout(() => {
             if (isSubscribed && target) {
@@ -90,7 +91,6 @@ export default function PlayerModal({
       // If player exists, just load the new video
       if (playerRef.current) {
         loadVideoAndPlay(playerRef.current);
-        // On subsequent loads, reset first song flag
         if (videoId !== playerRef.current.getVideoData().video_id) {
              setIsFirstSong(false);
         }
@@ -102,7 +102,7 @@ export default function PlayerModal({
         videoId: videoId,
         playerVars: {
           autoplay: 1,
-          mute: 1, // Must be muted initially for browser autoplay to function
+          mute: 1, 
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
@@ -111,13 +111,12 @@ export default function PlayerModal({
         events: {
           onReady: (event) => {
             if (isSubscribed) {
-              // On ready, apply the current prop state for muting (only run once per initialization)
               if (!isMuted) {
                 event.target.unMute();
               }
               event.target.playVideo();
               setIsPlaying(true);
-              setIsFirstSong(true); // Set true upon initial player creation
+              setIsFirstSong(true);
             }
           },
           onStateChange: (event) => {
@@ -147,35 +146,32 @@ export default function PlayerModal({
       window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // Cleanup only clears timeout, does NOT destroy player (player persists across video changes)
     return () => {
       isSubscribed = false;
       clearTimeout(initTimeout);
     };
   }, [videoId]); 
 
-  // This useEffect ensures the player's mute status matches the prop whenever the prop changes
+  // Mute/Unmute Logic
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
       if (isMuted) {
         playerRef.current.mute();
       } else {
-        // NEW FIX: If it's the first song AND we are unmuting, force a reload to restart the song
         if (isFirstSong) {
             playerRef.current.unMute();
             playerRef.current.seekTo(0);
             playerRef.current.playVideo();
-            setIsFirstSong(false); // Mark as not the first song anymore
+            setIsFirstSong(false); 
         } else {
-            // Normal unmute logic (no restart)
             playerRef.current.unMute();
         }
       }
     } catch(e) {
       console.error("Error setting mute state:", e);
     }
-  }, [isMuted, isFirstSong]); // Added isFirstSong dependency
+  }, [isMuted, isFirstSong]);
 
   const handleTogglePlay = () => {
     if (!playerRef.current) return;
@@ -192,21 +188,17 @@ export default function PlayerModal({
     }
   };
   
-  // Handler for Reject button 
   const handleReject = () => {
-    // In a real app, this should call onUpdateStatus(request.id, "rejected")
     alert(`Rejecting request ID: ${request.id}`);
-    onSkip(); // Skip to the next song after rejection
+    onSkip();
   };
   
-  // FIX: Safely access properties for tags. Check if request exists first.
   let tagsToDisplay = [];
   if (request) {
       tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
       if (request.explicit === 'Explicit') tagsToDisplay.push('Explicit');
   }
 
-  // FIX: Add safety check for the component's main rendering
   if (!videoId || !request) return null;
 
   return (
@@ -220,11 +212,12 @@ export default function PlayerModal({
         }`}
         style={!isMinimized ? {
           width: 'calc(100vw - 32px)',
-          maxWidth: '896px', // max-w-4xl equivalent
+          maxWidth: '896px', 
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // Transform adjusted to perfectly center the video on the aspect-ratio placeholder
+          // FIX: Adjusted transform to align perfectly with the placeholder, removing black space.
+          // Calculation: -50% (to center) - 108px (half the control panel height)
           transform: 'translateX(-50%) translateY(calc(-50% - 108px))', 
         } : undefined}
       >
@@ -263,13 +256,13 @@ export default function PlayerModal({
                 )}
               </div>
 
-              {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
+              {/* Controls and Info */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 pr-4">
-                    {/* Reduce spacing */}
+                    {/* FIX: Reduced margin to remove excess space between title/artist */}
                     <h2 className="text-xl sm:text-2xl font-bold text-white mb-0 truncate">{request.title}</h2> 
                     <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
                   </div>
@@ -293,7 +286,7 @@ export default function PlayerModal({
                       <p className="text-sm text-gray-500">Requested by: <span className="text-gray-300 font-medium">{request.requestedBy}</span></p>
                       
                       {/* Status + Tags */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mt-1">
                           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
                             request.status === 'approved' ? 'bg-blue-500/10 text-blue-400' :
                             request.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
