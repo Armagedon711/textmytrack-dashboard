@@ -199,10 +199,14 @@ export default function PlayerModal({
     onSkip(); // Skip to the next song after rejection
   };
   
-  // Format tags for display
-  const tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
-  if (request.explicit === 'Explicit') tagsToDisplay.push('Explicit');
+  // FIX: Safely access properties for tags. Check if request exists first.
+  let tagsToDisplay = [];
+  if (request) {
+      tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
+      if (request.explicit === 'Explicit') tagsToDisplay.push('Explicit');
+  }
 
+  // FIX: Add safety check for the component's main rendering
   if (!videoId || !request) return null;
 
   return (
@@ -220,8 +224,7 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX 1: Adjust transform to perfectly center the video on the aspect-ratio placeholder height.
-          // This removes the black space and top cutoff issue.
+          // Transform adjusted to perfectly center the video on the aspect-ratio placeholder
           transform: 'translateX(-50%) translateY(calc(-50% - 108px))', 
         } : undefined}
       >
@@ -263,10 +266,10 @@ export default function PlayerModal({
               {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
-                {/* Top Section of Controls: Title, Artist, Min/Close Buttons (FIX 1) */}
+                {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 pr-4">
-                    {/* FIX 5: Reduce spacing */}
+                    {/* Reduce spacing */}
                     <h2 className="text-xl sm:text-2xl font-bold text-white mb-0 truncate">{request.title}</h2> 
                     <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
                   </div>
@@ -298,7 +301,7 @@ export default function PlayerModal({
                           }`}>
                             {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                           </div>
-                          {/* FIX 5: Display Tags */}
+                          {/* Display Tags */}
                           {tagsToDisplay.map(tag => (
                              <span key={tag} className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/5 text-gray-400">
                                 {tag}
@@ -322,7 +325,7 @@ export default function PlayerModal({
                   {/* Left: Actions (Contextual Display) */}
                   <div className="flex gap-3 w-full sm:w-auto order-2 sm:order-1 justify-center">
                     
-                    {/* Only show Approve/Reject if status is Pending */}
+                    {/* Only show Mark As Approved/Reject if status is Pending */}
                     {(request.status === 'pending') && (
                       <>
                         <button 
@@ -333,7 +336,7 @@ export default function PlayerModal({
                           <ThumbsUp size={18} /> Mark As Approved
                         </button>
                         <button 
-                          onClick={handleReject} // FIX 2: Re-add Reject button
+                          onClick={handleReject} 
                           className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-colors justify-center"
                           title="Reject"
                         >
@@ -342,7 +345,7 @@ export default function PlayerModal({
                       </>
                     )}
 
-                    {/* Only show Mark Played if status is Approved (or Pending, if direct jump is allowed) */}
+                    {/* Only show Mark As Played if status is Approved (or Pending, for direct jump) */}
                     {(request.status === 'approved' || request.status === 'pending') && (
                       <button 
                         onClick={onMarkPlayed} 
