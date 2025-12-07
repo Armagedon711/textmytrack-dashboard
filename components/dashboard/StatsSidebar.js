@@ -1,5 +1,18 @@
 import { Phone, Power, Circle, CheckCircle2 } from "lucide-react";
 
+// Utility function to format phone number
+const formatPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return "...";
+  // Remove all non-digit characters
+  const cleaned = ('' + phoneNumber).replace(/\D/g, '');
+  // Match a pattern for 10 digits
+  const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+  if (match) {
+    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+  }
+  return phoneNumber;
+};
+
 export default function StatsSidebar({ 
   stats, 
   djProfile, 
@@ -12,6 +25,10 @@ export default function StatsSidebar({
 }) {
   const isHeadliner = djProfile?.plan?.toLowerCase() === "headliner";
   
+  // Apply formatting to both numbers
+  const formattedUniversalNumber = formatPhoneNumber(universalNumber);
+  const formattedTwilioNumber = formatPhoneNumber(djProfile?.twilio_number);
+
   return (
     <div className="space-y-6">
       {/* Request Line Card */}
@@ -23,10 +40,11 @@ export default function StatsSidebar({
           <div className="flex-1 min-w-0">
              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Request Line</p>
              {isHeadliner ? (
-               <p className="text-lg font-bold text-white">{djProfile.twilio_number}</p>
+               // Use formatted Twilio number for Headliner
+               <p className="text-lg font-bold text-white">{formattedTwilioNumber}</p>
              ) : (
                <div className="text-sm text-gray-300">
-                 Text <span className="font-bold text-pink-400">{djProfile?.tag || "..."}</span> to <span className="text-white font-semibold">{universalNumber}</span>
+                 Text <span className="font-bold text-pink-400">{djProfile?.tag || "..."}</span> to <span className="text-white font-semibold">{formattedUniversalNumber}</span>
                </div>
              )}
           </div>

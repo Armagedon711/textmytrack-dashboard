@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, X, Save, AlertCircle, CheckCircle2, Phone, Tag } from "lucide-react";
+import { Settings, X, Save, AlertCircle, CheckCircle2, Phone, Tag, DollarSign } from "lucide-react";
 
 export default function SettingsModal({ 
   isOpen, 
@@ -13,6 +13,19 @@ export default function SettingsModal({
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
+
+  // Utility function to format phone number (copied from StatsSidebar for consistency)
+  const formatPhoneNumber = (phoneNumber) => {
+    if (!phoneNumber) return "...";
+    const cleaned = ('' + phoneNumber).replace(/\D/g, '');
+    const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+    if (match) {
+      return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+    }
+    return phoneNumber;
+  };
+  
+  const formattedUniversalNumber = formatPhoneNumber(universalNumber);
 
   const handleSaveTag = async () => {
     setStatus({ type: "", msg: "" });
@@ -59,6 +72,23 @@ export default function SettingsModal({
          </div>
 
          <div className="p-6 space-y-6">
+            {/* Plan Info and Upgrade Button */}
+            <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Your Plan</label>
+                <div className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-lg">
+                    <span className="font-semibold text-lg text-pink-400 capitalize">
+                       {djProfile?.plan || "Trial"}
+                    </span>
+                    <button 
+                       onClick={() => alert("Upgrade functionality coming soon!")}
+                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-pink-600 text-white font-medium hover:bg-pink-700 transition-colors text-sm"
+                    >
+                       <DollarSign size={16} />
+                       Upgrade Plan
+                    </button>
+                </div>
+            </div>
+
             {/* Tag Input */}
             <div className="space-y-3">
                <label className="text-sm font-medium text-gray-300">Your DJ Tag</label>
@@ -88,7 +118,8 @@ export default function SettingsModal({
 
                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                  <p className="text-xs text-blue-400">Preview:</p>
-                 <p className="text-sm text-white">Text <span className="text-pink-400 font-bold">{tag || "..."}</span> to {universalNumber}</p>
+                 {/* FIX: Use formatted universal number */}
+                 <p className="text-sm text-white">Text <span className="text-pink-400 font-bold">{tag || "..."}</span> to {formattedUniversalNumber}</p>
                </div>
             </div>
 

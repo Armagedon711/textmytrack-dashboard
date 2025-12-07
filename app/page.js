@@ -13,11 +13,11 @@ import SettingsModal from "../components/dashboard/SettingsModal";
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
-// FIX: Replace broken unicode icons (Issue #3) with standard emojis
+// FIX: Replace broken unicode icons (Issue #3) with standard emojis and update icon choices
 const PLATFORMS = {
   youtube: { name: "YouTube", icon: "▶️", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
   spotify: { name: "Spotify", icon: "🟢", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
-  apple: { name: "Apple Music", icon: "", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
+  apple: { name: "Apple Music", icon: "🍎", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
   soundcloud: { name: "SoundCloud", icon: "☁️", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
 };
 const TABS = [
@@ -170,9 +170,18 @@ export default function Dashboard() {
        setPlayingRequestId(req.id);
        setIsMinimized(false);
     } else {
-       // Open External
-       const url = selectedPlatform === 'spotify' ? req.spotify_url : 
-                   selectedPlatform === 'apple' ? req.apple_url : req.url;
+       // Open External - FIX: Correctly determine external URL based on selectedPlatform
+       let url = null;
+       if (selectedPlatform === 'spotify' && req.spotify_url) {
+           url = req.spotify_url;
+       } else if (selectedPlatform === 'apple' && req.apple_url) {
+           url = req.apple_url;
+       } else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) {
+           url = req.soundcloud_url;
+       } else if (req.url) { // Fallback to generic URL if it exists
+           url = req.url;
+       }
+       
        if(url) window.open(url, '_blank');
     }
   };
@@ -293,8 +302,9 @@ export default function Dashboard() {
                     onClick={() => setFilterStatus(tab.key)}
                     className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
                       filterStatus === tab.key 
+                      // FIX: Set background color for all tabs
                       ? "bg-white/10 border-white/20 text-white" 
-                      : "bg-transparent border-transparent text-gray-400 hover:bg-white/5"
+                      : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
                     }`}
                   >
                     {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
