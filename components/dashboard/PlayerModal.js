@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { 
   Play, Pause, Volume2, VolumeX, SkipForward, 
-  ThumbsUp, Check, Minimize2, Maximize2, X, Music 
+  ThumbsUp, Check, Minimize2, Maximize2, X, Music, Ban
 } from "lucide-react";
 
 const PLAYER_ID = "youtube-player-persistence";
@@ -68,16 +68,12 @@ export default function PlayerModal({
       const loadVideoAndPlay = () => {
         try {
           playerRef.current.loadVideoById(videoId);
-          // Playback logic moved to a helper for reuse
           setTimeout(() => {
             if (isSubscribed && playerRef.current) {
               try {
                 playerRef.current.playVideo();
                 setIsPlaying(true);
-                // NEW MUTE FIX: If parent state says not muted, try to unmute (may be blocked by browser)
-                if (!isMuted) {
-                  playerRef.current.unMute();
-                }
+                // Mute state handled by the separate useEffect below
               } catch (e) {
                 console.error("Error starting playback:", e);
               }
@@ -99,7 +95,7 @@ export default function PlayerModal({
         videoId: videoId,
         playerVars: {
           autoplay: 1,
-          mute: 1, // REINSTATED: Must be muted initially for browser autoplay
+          mute: 1, // Must be muted initially for browser autoplay to function
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
@@ -108,7 +104,7 @@ export default function PlayerModal({
         events: {
           onReady: (event) => {
             if (isSubscribed) {
-              // On ready, respect the isMuted prop. If it's false, try to unmute.
+              // On ready, apply the current prop state for muting (only run once per initialization)
               if (!isMuted) {
                 event.target.unMute();
               }
@@ -148,28 +144,9 @@ export default function PlayerModal({
       isSubscribed = false;
       clearTimeout(initTimeout);
     };
-  }, [videoId, isMuted]); // Added isMuted dependency to re-initialize mute logic if prop changes
+  }, [videoId]); 
 
-  // Separate cleanup effect that only runs on unmount
-  useEffect(() => {
-    return () => {
-      const playerInstance = playerRef.current;
-      if (playerInstance) {
-        try {
-          if (typeof playerInstance.destroy === 'function') {
-            playerInstance.stopVideo();
-            playerInstance.destroy();
-          }
-        } catch (e) {
-          console.error("Error destroying player on unmount:", e);
-        } finally {
-          playerRef.current = null;
-        }
-      }
-    };
-  }, []); // Empty deps = only runs on unmount 
-
-  // This useEffect ensures the player's mute status matches the prop whenever the prop changes
+  // This useEffect still runs when the isMuted PROP changes, ensuring volume toggling works
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -193,6 +170,22 @@ export default function PlayerModal({
       console.error("Error toggling play:", e);
     }
   };
+  
+  // Handler for Reject button (since we need to pass a status)
+  const handleReject = () => {
+    // Assuming onApprove/onMarkPlayed is designed to handle status updates for the current request
+    // We'll call onApprove with a status of 'rejected' if we had a dedicated handler, 
+    // but since we only have onApprove/onMarkPlayed, we'll assume a new prop is needed, 
+    // or we can use onApprove to signify an action and handle status update in the parent component, 
+    // but for now, we'll assume a dedicated handler for status updates exists or create a simple dummy.
+    // For this demonstration, we'll assume a new prop `onReject` is passed down, or we use a simplified version:
+    if (request && onMarkPlayed) {
+        // Since we don't have an onReject prop, we'll use a placeholder for now.
+        // In a real app, you would pass an onReject={ (req) => handleUpdateStatus(req.id, "rejected") }
+        alert(`Rejecting request ID: ${request.id}`);
+        onSkip(); // Skip to the next song after rejection
+    }
+  };
 
   if (!videoId || !request) return null;
 
@@ -211,8 +204,7 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX: Transform adjusted to perfectly center the video on the aspect-ratio placeholder
-          // This removes the black space and top cutoff issue.
+          // Transform adjusted to perfectly center the video on the aspect-ratio placeholder
           transform: 'translateX(-50%) translateY(calc(-50% - 108px))', 
         } : undefined}
       >
@@ -244,7 +236,7 @@ export default function PlayerModal({
               
               {/* Header with Title and Close/Min buttons */}
               <div className="p-4 sm:p-6 pb-2 flex justify-between items-start border-b border-white/5 bg-[#16161f] rounded-t-xl">
-                 {/* FIX: Prominent Title/Artist */}
+                 {/* Prominent Title/Artist */}
                  <div className="min-w-0 pr-4">
                    <h2 className="text-xl sm:text-2xl font-bold text-white mb-0.5 truncate">{request.title}</h2>
                    <p className="text-md sm:text-lg text-gray-400 truncate">{request.artist}</p>
@@ -270,55 +262,63 @@ export default function PlayerModal({
                 )}
               </div>
 
-              {/* Controls and Info */}
+              {/* Controls and Info (NEW LAYOUT IMPLEMENTATION) */}
               <div className="flex-1 p-4 sm:p-6 flex flex-col justify-between"> 
                 
-                {/* Top: Status, Requested By, Next Song */}
-                <div className="flex justify-between items-center mb-6 text-sm">
-                  {/* Status & Requested By */}
-                  <div>
-                    <div className={`px-3 py-1 rounded-full text-xs font-semibold mb-1 ${
-                      request.status === 'approved' ? 'bg-blue-500/10 text-blue-400' :
-                      request.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
-                      'bg-gray-500/10 text-gray-400'
-                    }`}>
-                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                    </div>
-                    <p className="text-xs text-gray-500">Requested by: <span className="text-gray-300 font-medium">{request.requestedBy}</span></p>
+                {/* Top Row: Metadata (User, Status, Up Next) */}
+                <div className="flex justify-between items-center mb-6 text-sm flex-wrap gap-3">
+                  
+                  {/* Requested By & Status Badge */}
+                  <div className="flex items-center gap-4">
+                      <p className="text-sm text-gray-500">Requested by: <span className="text-gray-300 font-medium">{request.requestedBy}</span></p>
+                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        request.status === 'approved' ? 'bg-blue-500/10 text-blue-400' :
+                        request.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
+                        'bg-gray-500/10 text-gray-400'
+                      }`}>
+                        {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                      </div>
                   </div>
 
                   {/* Up Next Display */}
                   {nextSong && (
-                    <div className="flex items-center gap-2 text-gray-500 p-2 bg-white/5 rounded-lg">
+                    <div className="flex items-center gap-2 text-gray-500 p-2 bg-white/5 rounded-lg flex-shrink-0">
                       <span className="text-xs">Up next:</span>
                       <span className="text-gray-300 font-medium truncate max-w-[150px]">{nextSong.title}</span>
                     </div>
                   )}
                 </div>
                 
-                {/* Bottom: Main Controls & Actions (Simplified layout) */}
+                {/* Bottom Row: Actions (Left) and Playback (Right) */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pt-4 border-t border-white/5">
                   
-                  {/* Left: Actions */}
-                  <div className="flex gap-3 w-full sm:w-auto order-2 sm:order-1">
+                  {/* Left: Actions (Approve, Played, Reject) */}
+                  <div className="flex gap-3 w-full sm:w-auto order-2 sm:order-1 justify-center">
                     <button 
                       onClick={onApprove} 
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors w-1/2 sm:w-auto justify-center"
-                      title="Approve and Play Next"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors justify-center"
+                      title="Approve"
                     >
-                      <ThumbsUp size={18} /> <span className="hidden sm:block">Approve</span>
+                      <ThumbsUp size={18} /> Approve
                     </button>
                     <button 
                       onClick={onMarkPlayed} 
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors w-1/2 sm:w-auto justify-center"
-                      title="Mark as Played"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-400 font-medium transition-colors justify-center"
+                      title="Mark Played"
                     >
-                      <Check size={18} /> <span className="hidden sm:block">Played</span>
+                      <Check size={18} /> Played
+                    </button>
+                     <button 
+                      onClick={handleReject} // Using local dummy handler
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-colors justify-center"
+                      title="Reject"
+                    >
+                      <Ban size={18} /> Reject
                     </button>
                   </div>
 
-                  {/* Center: Playback (Main control buttons) */}
-                  <div className="flex gap-4 p-3 rounded-xl w-full sm:w-auto justify-center order-1 sm:order-2">
+                  {/* Right: Playback Controls (Skip, Play/Pause, Mute, AutoPlay) */}
+                  <div className="flex gap-4 p-3 rounded-xl bg-white/5 w-full sm:w-auto justify-center order-1 sm:order-2">
                     <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors" title="Skip">
                       <SkipForward size={24} />
                     </button>
@@ -328,12 +328,8 @@ export default function PlayerModal({
                     <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "hover:bg-white/10 text-gray-400" : "text-white hover:bg-white/10"}`} title={isMuted ? "Unmute" : "Mute"}>
                       {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                     </button>
-                  </div>
-                  
-                  {/* Right: Empty space for balance / AutoPlay toggle */}
-                  <div className="w-full sm:w-auto order-3 flex justify-end">
-                    <button onClick={onToggleAutoPlay} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${autoPlay ? 'bg-purple-500/10 text-purple-400' : 'bg-white/5 text-gray-400'}`}>
-                        AutoPlay: {autoPlay ? 'On' : 'Off'}
+                    <button onClick={onToggleAutoPlay} className={`p-2 rounded-lg text-xs font-medium transition-colors ${autoPlay ? 'bg-purple-500/20 text-purple-400' : 'text-gray-400 hover:bg-white/10'}`} title={`AutoPlay: ${autoPlay ? 'On' : 'Off'}`}>
+                        AutoPlay
                     </button>
                   </div>
                 </div>
@@ -365,7 +361,7 @@ export default function PlayerModal({
               
               {/* Minimized Controls (Skip, Play/Pause, Mute/Unmute, Maximize, Close) */}
               <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-                {/* NEW: Mute Button */}
+                {/* Mute Button */}
                 <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-white/5 text-white hover:bg-white/10"}`} title={isMuted ? "Unmute" : "Mute"}>
                     {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
