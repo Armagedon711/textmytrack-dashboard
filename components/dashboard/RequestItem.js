@@ -58,7 +58,6 @@ export default function RequestItem({
               <Play size={20} className="text-white fill-white" />
             </button>
           )}
-          {/* Mobile Play Button overlay (always visible if playable) */}
           {hasUrl && !isCurrentlyPlaying && (
              <button onClick={() => onPlay(req)} className="absolute inset-0 bg-black/30 flex items-center justify-center sm:hidden">
                <Play size={16} className="text-white fill-white" />
@@ -105,9 +104,16 @@ export default function RequestItem({
 
           {/* Metadata */}
           <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] sm:text-xs text-gray-500 flex-wrap">
+            {/* EXPLICIT TAG */}
             {req.explicit === "Explicit" && (
               <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Explicit</span>
             )}
+            
+            {/* NEW: CLEAN TAG */}
+            {req.explicit === "Clean" && (
+              <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Clean</span>
+            )}
+
             <div className="flex items-center gap-1">
               <User size={10} />
               <span className="truncate max-w-[80px] sm:max-w-none">{req.requestedBy}</span>
@@ -137,7 +143,6 @@ export default function RequestItem({
                 <Check size={16} />
               </button>
            )}
-           {/* FIX: Change button for Played status to 'Move Back to Approved' */}
            {isPlayedStatus && (
               <button onClick={() => onUpdateStatus(req.id, "approved")} className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400" title="Move to Approved">
                 <RotateCcw size={16} />
@@ -149,7 +154,7 @@ export default function RequestItem({
         </div>
       </div>
 
-      {/* Mobile Action Bar (Bottom Row) */}
+      {/* Mobile Action Bar */}
       <div className="sm:hidden flex items-center gap-2 mt-3 pt-2 border-t border-white/5">
          {isPending ? (
            <>
@@ -160,7 +165,7 @@ export default function RequestItem({
               <Ban size={14} />
             </button>
            </>
-         ) : isApproved || isPlayedStatus ? ( // Show Move/Mark on mobile too
+         ) : isApproved || isPlayedStatus ? ( 
             <button onClick={() => onUpdateStatus(req.id, isPlayedStatus ? "approved" : "played")} 
                     className={`flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
                        isPlayedStatus ? "bg-blue-500/10 text-blue-400" : "bg-green-500/10 text-green-400"
