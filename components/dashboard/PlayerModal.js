@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { 
   Play, Pause, Volume2, VolumeX, SkipForward, 
   ThumbsUp, Check, Minimize2, Maximize2, X, Music, Ban,
-  Lock, Unlock 
+  Lock, Unlock, Zap 
 } from "lucide-react";
 
 const PLAYER_ID = "youtube-player-persistence";
@@ -368,7 +368,7 @@ export default function PlayerModal({
             </div>
         )}
 
-        {/* Minimized Player UI - FIXED THUMBNAIL */}
+        {/* Minimized Player UI */}
         {isMinimized && request && (
           <div className="flex items-center p-3 w-full bg-[#12121a] border-t border-white/10">
             <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0 group" onClick={onMaximize}>
@@ -377,7 +377,7 @@ export default function PlayerModal({
                      <img 
                        src={request.thumbnail} 
                        alt="Thumbnail" 
-                       className="w-full h-full object-cover scale-[1.35]" // Added Scale
+                       className="w-full h-full object-cover scale-[1.35]" 
                      />
                  ) : (
                      <Music size={20} className="text-gray-600" />
@@ -393,28 +393,52 @@ export default function PlayerModal({
             </div>
             
             {/* Minimized Controls */}
-            <div className="flex items-center gap-1 ml-4 flex-shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2 ml-4 flex-shrink-0">
+               
+               {/* 1. LOCK */}
                <button 
                  onClick={toggleLock} 
-                 className={`p-2 rounded-lg transition-colors mr-2 ${isLocked ? "bg-pink-500/20 text-pink-400" : "text-gray-500 hover:bg-white/5"}`}
+                 className={`p-2 rounded-lg transition-colors hidden xs:block ${isLocked ? "bg-pink-500/20 text-pink-400" : "text-gray-500 hover:bg-white/5"}`}
                  title={isLocked ? "Unlock Player" : "Lock Minimized"}
                >
                  {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
                </button>
 
-               <button onClick={handleTogglePlay} className="p-2.5 bg-white text-black rounded-full hover:scale-105 transition-transform mr-2">
+               {/* 2. AUTOPLAY (New) */}
+               <button 
+                 onClick={onToggleAutoPlay} 
+                 className={`p-2 rounded-lg transition-colors hidden sm:block ${autoPlay ? "text-purple-400 bg-purple-500/10" : "text-gray-500 hover:bg-white/5"}`}
+                 title={`AutoPlay ${autoPlay ? 'ON' : 'OFF'}`}
+               >
+                 <Zap size={16} className={autoPlay ? "fill-current" : ""} />
+               </button>
+
+               {/* 3. VOLUME (New) */}
+               <button 
+                 onClick={onToggleMute} 
+                 className={`p-2 rounded-lg transition-colors hidden sm:block ${isMuted ? "text-gray-500 hover:text-white" : "text-gray-300 hover:text-white"}`}
+                 title="Toggle Mute"
+               >
+                 {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+               </button>
+
+               {/* 4. PLAY / PAUSE */}
+               <button onClick={handleTogglePlay} className="p-2.5 bg-white text-black rounded-full hover:scale-105 transition-transform mx-1">
                 {isPlaying ? <Pause size={16} className="fill-black" /> : <Play size={16} className="fill-black ml-0.5" />} 
               </button>
               
-              <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-gray-300 hidden sm:block">
+              {/* 5. SKIP */}
+              <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-gray-300">
                 <SkipForward size={18} />
               </button>
               
-              <button onClick={onMaximize} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1" title="Maximize">
+              {/* 6. MAXIMIZE */}
+              <button onClick={onMaximize} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg hidden sm:block" title="Maximize">
                 <Maximize2 size={18} />
               </button>
 
-              <button onClick={onClose} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1">
+              {/* 7. CLOSE */}
+              <button onClick={onClose} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg">
                 <X size={18} />
               </button>
             </div>
