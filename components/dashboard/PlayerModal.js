@@ -33,7 +33,7 @@ export default function PlayerModal({
   onToggleMute,
   onToggleAutoPlay,
   onSkip,
-  onApprove, // Now handles Mark As Approved
+  onApprove,
   onMarkPlayed,
   onVideoEnd,
 }) {
@@ -62,6 +62,7 @@ export default function PlayerModal({
     let isSubscribed = true;
 
     const initPlayer = () => {
+      // Wait for API to be ready
       if (!window.YT || !window.YT.Player) {
         initTimeout = setTimeout(initPlayer, 100);
         return;
@@ -69,32 +70,31 @@ export default function PlayerModal({
       
       const loadVideoAndPlay = (target) => {
         try {
-          if (target.stopVideo) target.stopVideo(); 
-          
-          target.loadVideoById(videoId);
-          setTimeout(() => {
-            if (isSubscribed && target) {
-              try {
-                target.playVideo();
-                setIsPlaying(true);
-              } catch (e) {
-                console.error("Error starting playback:", e);
-              }
-            }
-          }, 200);
+          // Check if we are actually changing songs to avoid reloading the same one
+          const currentData = target.getVideoData ? target.getVideoData() : null;
+          const currentId = currentData ? currentData.video_id : null;
+
+          if (currentId !== videoId) {
+             setIsFirstSong(false);
+             // loadVideoById automatically plays the video; no need for stopVideo or setTimeout
+             target.loadVideoById({
+                 videoId: videoId,
+                 startSeconds: 0
+             });
+             setIsPlaying(true);
+          }
         } catch (e) {
           console.error("Error loading video:", e);
         }
       };
       
+      // If player exists, just load the new video
       if (playerRef.current) {
         loadVideoAndPlay(playerRef.current);
-        if (videoId !== playerRef.current.getVideoData().video_id) {
-             setIsFirstSong(false);
-        }
         return;
       }
 
+      // If player doesn't exist, create it
       playerRef.current = new window.YT.Player(PLAYER_ID, {
         videoId: videoId,
         playerVars: {
@@ -213,8 +213,7 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // FIX: Adjusted offset to 86px to better align with the tighter controls layout
-          // and eliminate black space above.
+          // Adjusted offset to 86px to better align with the tighter controls layout
           transform: 'translateX(-50%) translateY(calc(-50% - 86px))', 
         } : undefined}
       >
@@ -231,7 +230,7 @@ export default function PlayerModal({
             ? "bottom-0 left-0 w-full" 
             : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/50" 
         }`}
-        // FIX: Minimize player when clicking the backdrop, but only if not minimized already
+        // Minimize player when clicking the backdrop, but only if not minimized already
         onClick={!isMinimized ? onMinimize : undefined}
       >
         <div
@@ -257,12 +256,10 @@ export default function PlayerModal({
                 )}
               </div>
 
-              {/* Controls and Info (ALL CONTENT IS NOW BELOW THE VIDEO) */}
-              {/* FIX: Reduced padding to p-4 to minimize vertical space */}
+              {/* Controls and Info */}
               <div className="flex-1 p-4 flex flex-col justify-between"> 
                 
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
-                {/* FIX: Reduced bottom margin to mb-1 to bring text closer */}
                 <div className="flex justify-between items-start mb-1">
                   <div className="min-w-0 pr-4">
                     <h2 className="text-xl sm:text-2xl font-bold text-white mb-0 truncate">{request.title}</h2> 
@@ -373,7 +370,7 @@ export default function PlayerModal({
             </div>
           )}
 
-          {/* Minimized Player (Enhanced with Mute/Unmute) */}
+          {/* Minimized Player */}
           {isMinimized && request && (
             <div className="flex items-center p-3 w-full">
               <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={onMaximize}>
@@ -395,9 +392,8 @@ export default function PlayerModal({
                 </div>
               </div>
               
-              {/* Minimized Controls (Skip, Play/Pause, Mute/Unmute, Maximize, Close) */}
+              {/* Minimized Controls */}
               <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-                {/* Mute Button */}
                 <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-white/5 text-white hover:bg-white/10"}`} title={isMuted ? "Unmute" : "Mute"}>
                     {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
