@@ -1,6 +1,7 @@
 import { ListMusic } from "lucide-react";
 import RequestItem from "./RequestItem";
-import { Droppable } from "@hello-pangea/dnd"; // NEW IMPORT
+// CHANGE: Import from your new file instead of the library directly
+import { StrictModeDroppable } from "./StrictModeDroppable"; 
 
 export default function RequestList({ 
   requests, 
@@ -8,11 +9,11 @@ export default function RequestList({
   filterStatus, 
   currentPlayingId,
   onPlay,
-  onUpdateStatus,
+  onUpdateStatus, 
   onDelete,
   platformPreference,
   tabLabel,
-  droppableId // New Prop
+  droppableId 
 }) {
   if (loading) {
     return (
@@ -39,8 +40,9 @@ export default function RequestList({
     );
   }
 
+  // CHANGE: Use StrictModeDroppable instead of Droppable
   return (
-    <Droppable droppableId={droppableId || "list"}>
+    <StrictModeDroppable droppableId={droppableId || "list"}>
       {(provided) => (
         <div 
            className="space-y-2 sm:space-y-3"
@@ -73,6 +75,6 @@ export default function RequestList({
           {provided.placeholder}
         </div>
       )}
-    </Droppable>
+    </StrictModeDroppable>
   );
 }
