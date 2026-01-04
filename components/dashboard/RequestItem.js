@@ -1,8 +1,8 @@
 import { 
   Play, ThumbsUp, Ban, Check, Trash2, Clock, 
-  ExternalLink, Music, User, RotateCcw, GripVertical // New Icon
+  ExternalLink, Music, User, RotateCcw, GripVertical 
 } from "lucide-react";
-import { Draggable } from "@hello-pangea/dnd"; // NEW IMPORT
+import { Draggable } from "@hello-pangea/dnd"; 
 
 export default function RequestItem({ 
   req, 
@@ -32,16 +32,21 @@ export default function RequestItem({
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group p-3 sm:p-4 rounded-xl border transition-all ${
-            snapshot.isDragging ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" : 
-            isCurrentlyPlaying ? "bg-pink-500/10 border-pink-500/30" : "bg-[#12121a] border-white/5 hover:border-white/10"
+          // CHANGE: Replaced 'transition-all' with 'transition-colors'
+          // This prevents the drag movement from being animated/laggy
+          className={`group p-3 sm:p-4 rounded-xl border transition-colors duration-200 ${
+            snapshot.isDragging 
+              ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
+              : isCurrentlyPlaying 
+                ? "bg-pink-500/10 border-pink-500/30" 
+                : "bg-[#12121a] border-white/5 hover:border-white/10"
           }`}
           style={provided.draggableProps.style}
         >
           {/* Main Row */}
           <div className="flex items-center gap-3 sm:gap-4">
             
-            {/* Desktop Drag Handle (Replaces Index) */}
+            {/* Desktop Drag Handle */}
             <div 
                {...provided.dragHandleProps}
                className="hidden md:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 text-gray-500 cursor-grab active:cursor-grabbing hover:bg-white/10 hover:text-white"
