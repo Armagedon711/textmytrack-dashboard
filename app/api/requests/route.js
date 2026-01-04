@@ -16,6 +16,44 @@ if (
   );
 }
 
+// ---------- GET (Fetch Requests) ----------
+export async function GET(req) {
+  try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: "Supabase admin not initialized" },
+        { status: 500 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const dj_id = searchParams.get("dj_id");
+
+    if (!dj_id) {
+      return NextResponse.json(
+        { error: "Missing dj_id" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("requests")
+      .select("*")
+      .eq("dj_id", dj_id)
+      .order("position", { ascending: true }); // Updated to sort by position
+
+    if (error) {
+      console.error("Supabase error fetching requests:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    
+    return NextResponse.json({ requests: data || [] });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ---------- POST (Insert New Request) ----------
 export async function POST(request) {
   try {
     if (!supabaseAdmin) {
@@ -58,13 +96,35 @@ export async function POST(request) {
       );
     }
 
-    // 1. INSERT THE SONG REQUEST
+    // 1. CALCULATE EXPLICIT VALUE
     const explicitValue =
       explicit === "Explicit" || explicit === "Clean" ? explicit : "Undetermined";
 
+    // 2. EXTRACT YOUTUBE ID (Restored Logic)
     let videoId = youtube_video_id || null;
-    // ... (Keep existing video ID extraction logic here) ...
+    const ytUrl = youtube_url || url;
+    
+    if (!videoId && ytUrl) {
+      const patterns = [
+        /youtu\.be\/([^?]+)/,
+        /[?&]v=([^&]+)/,
+        /shorts\/([^?]+)/,
+        /embed\/([^?]+)/
+      ];
+      for (const pattern of patterns) {
+        const match = ytUrl.match(pattern);
+        if (match) {
+          videoId = match[1];
+          break;
+        }
+      }
+    }
 
+    // 3. INSERT THE SONG REQUEST
+    // Get current max position to append to end of queue
+    // (Optional optimization: default to large number, let DB handle it, or fetch max)
+    // For now we use the default logic or just insert.
+    
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
       artist,
@@ -84,6 +144,7 @@ export async function POST(request) {
       spotify_url: spotify_url || null,
       apple_url: apple_url || null,
       soundcloud_url: soundcloud_url || null,
+      // Default position logic handled by DB default (epoch) or we can leave it null for now
     });
 
     if (error) {
@@ -91,7 +152,7 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 2. INSERT THE CHAT MESSAGE (NEW)
+    // 4. INSERT THE CHAT MESSAGE (NEW LOGIC)
     if (message_body && sender_number) {
         const { error: msgError } = await supabaseAdmin.from("messages").insert({
             dj_id,
