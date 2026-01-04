@@ -225,9 +225,18 @@ export default function Dashboard() {
 
 
   return (
-    // UPDATED MAIN CLASS: h-screen overflow-y-scroll (This forces the scrollbar to always exist)
-    <main className="h-screen overflow-y-scroll bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
-      
+    // UPDATED: Added custom scrollbar styles to the main container
+    <main 
+      className="
+        h-screen overflow-y-scroll 
+        bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]
+        [&::-webkit-scrollbar]:w-2
+        [&::-webkit-scrollbar-track]:bg-[#0a0a0f]
+        [&::-webkit-scrollbar-thumb]:bg-[#2a2a35]
+        [&::-webkit-scrollbar-thumb]:rounded-full
+        hover:[&::-webkit-scrollbar-thumb]:bg-[#3a3a4a]
+      "
+    >
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
         <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
@@ -266,7 +275,7 @@ export default function Dashboard() {
         onVideoEnd={handleNextSong}
       />
 
-      {/* Main Container - Standard padding at bottom */}
+      {/* Main Container */}
       <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
