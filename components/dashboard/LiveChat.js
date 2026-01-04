@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Bot, Loader2 } from "lucide-react";
+import { MessageSquare, User, Bot, Loader2, Ban } from "lucide-react";
 
 export default function LiveChat({ djId }) {
   const [messages, setMessages] = useState([]);
@@ -62,6 +62,16 @@ export default function LiveChat({ djId }) {
     return () => supabase.removeChannel(channel);
   }, [djId]);
 
+  // BAN USER HANDLER
+  const handleBan = async (phoneNumber) => {
+     if (!confirm(`Ban ${phoneNumber}?`)) return;
+     await fetch("/api/blacklist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dj_id: djId, phone_number: phoneNumber })
+     });
+     alert("User banned.");
+  };
+
   return (
     <div className="flex flex-col h-[400px] bg-[#12121a] border border-white/5 rounded-2xl overflow-hidden mt-6">
       {/* Header */}
@@ -72,7 +82,7 @@ export default function LiveChat({ djId }) {
         <h3 className="text-sm font-bold text-white">Live Text Feed</h3>
       </div>
 
-      {/* Chat Area - UPDATED SCROLLBAR STYLING */}
+      {/* Chat Area - Custom Scrollbar */}
       <div 
         ref={scrollRef} 
         className="flex-1 overflow-y-auto p-4 space-y-4 pr-2
@@ -106,9 +116,20 @@ export default function LiveChat({ djId }) {
                       <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
                     </div>
                   </div>
-                  <p className="text-[10px] text-gray-600 ml-8 mt-1">
-                    {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                  </p>
+                  
+                  {/* Meta + Ban Button */}
+                  <div className="flex items-center gap-2 mt-1 ml-8 group">
+                      <p className="text-[10px] text-gray-600">
+                        {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </p>
+                      <button 
+                        onClick={() => handleBan(msg.sender_number)}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500/20 rounded text-gray-600 hover:text-red-400 transition-all"
+                        title="Ban User"
+                      >
+                         <Ban size={10} />
+                      </button>
+                  </div>
                 </div>
               </div>
 

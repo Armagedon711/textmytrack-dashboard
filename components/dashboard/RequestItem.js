@@ -1,6 +1,6 @@
 import { 
   Play, ThumbsUp, Ban, Check, Trash2, Clock, 
-  ExternalLink, Music, User, RotateCcw, GripVertical 
+  ExternalLink, Music, User, RotateCcw, GripVertical
 } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd"; 
 
@@ -26,14 +26,28 @@ export default function RequestItem({
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
+  // BAN USER HANDLER
+  const handleBanUser = async () => {
+    if (!confirm(`Are you sure you want to BAN ${req.requestedBy}? They will no longer be able to request songs.`)) return;
+    
+    // Call the API
+    await fetch("/api/blacklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dj_id: req.dj_id, phone_number: req.requestedBy })
+    });
+    
+    // Auto-reject this request to clear it
+    onUpdateStatus(req.id, "rejected");
+    alert("User has been banned.");
+  };
+
   return (
     <Draggable draggableId={req.id.toString()} index={index}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          // CHANGE: Replaced 'transition-all' with 'transition-colors'
-          // This prevents the drag movement from being animated/laggy
           className={`group p-3 sm:p-4 rounded-xl border transition-colors duration-200 ${
             snapshot.isDragging 
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
@@ -131,7 +145,14 @@ export default function RequestItem({
 
                 <div className="flex items-center gap-1">
                   <User size={10} />
-                  <span className="truncate max-w-[80px] sm:max-w-none">{req.requestedBy}</span>
+                  {/* CLICK TO BAN BUTTON */}
+                  <button 
+                    onClick={handleBanUser}
+                    className="truncate max-w-[80px] sm:max-w-none hover:text-red-400 hover:underline transition-colors flex items-center gap-1"
+                    title="Click to Ban User"
+                  >
+                    {req.requestedBy}
+                  </button>
                 </div>
                 <span>•</span>
                 <div className="flex items-center gap-1">

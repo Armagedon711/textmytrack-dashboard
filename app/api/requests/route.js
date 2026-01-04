@@ -40,7 +40,7 @@ export async function GET(req) {
       .from("requests")
       .select("*")
       .eq("dj_id", dj_id)
-      .order("position", { ascending: true }); // Updated to sort by position
+      .order("position", { ascending: true }); // Ordered by Drag & Drop position
 
     if (error) {
       console.error("Supabase error fetching requests:", error.message);
@@ -65,6 +65,23 @@ export async function POST(request) {
 
     const body = await request.json();
 
+    // 1. [NEW] CHECK BLACKLIST FIRST
+    // If the user is banned, we block the request immediately.
+    if (body.dj_id && body.sender_number) {
+       const { data: banned } = await supabaseAdmin
+         .from("blacklisted_users")
+         .select("id")
+         .eq("dj_id", body.dj_id)
+         .eq("phone_number", body.sender_number)
+         .single();
+
+       if (banned) {
+         console.log(`Blocked request from banned user: ${body.sender_number}`);
+         // Return error 403 (Forbidden)
+         return NextResponse.json({ success: false, error: "User is blacklisted" }, { status: 403 });
+       }
+    }
+
     const {
       title,
       artist,
@@ -83,7 +100,7 @@ export async function POST(request) {
       spotify_url,
       apple_url,
       soundcloud_url,
-      // NEW FIELDS FROM N8N
+      // Chat Fields from n8n
       message_body,
       sender_number,
       reply_body
@@ -96,11 +113,11 @@ export async function POST(request) {
       );
     }
 
-    // 1. CALCULATE EXPLICIT VALUE
+    // 2. CALCULATE EXPLICIT VALUE
     const explicitValue =
       explicit === "Explicit" || explicit === "Clean" ? explicit : "Undetermined";
 
-    // 2. EXTRACT YOUTUBE ID (Restored Logic)
+    // 3. EXTRACT YOUTUBE ID (RESTORED LOGIC)
     let videoId = youtube_video_id || null;
     const ytUrl = youtube_url || url;
     
@@ -120,11 +137,7 @@ export async function POST(request) {
       }
     }
 
-    // 3. INSERT THE SONG REQUEST
-    // Get current max position to append to end of queue
-    // (Optional optimization: default to large number, let DB handle it, or fetch max)
-    // For now we use the default logic or just insert.
-    
+    // 4. INSERT THE SONG REQUEST
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
       artist,
@@ -144,7 +157,6 @@ export async function POST(request) {
       spotify_url: spotify_url || null,
       apple_url: apple_url || null,
       soundcloud_url: soundcloud_url || null,
-      // Default position logic handled by DB default (epoch) or we can leave it null for now
     });
 
     if (error) {
@@ -152,7 +164,7 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. INSERT THE CHAT MESSAGE (NEW LOGIC)
+    // 5. INSERT THE CHAT MESSAGE LOG
     if (message_body && sender_number) {
         const { error: msgError } = await supabaseAdmin.from("messages").insert({
             dj_id,
@@ -164,7 +176,6 @@ export async function POST(request) {
         
         if (msgError) {
             console.error("Error logging chat message:", msgError.message);
-            // We don't return an error here so the main song request still succeeds
         } else {
             console.log("Chat log saved successfully");
         }
