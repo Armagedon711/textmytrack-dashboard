@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { 
   Play, Pause, Volume2, VolumeX, SkipForward, 
-  ThumbsUp, Check, Minimize2, Maximize2, X, Music, Ban 
+  ThumbsUp, Check, Minimize2, Maximize2, X, Music, Ban,
+  Lock, Unlock // Added Icons
 } from "lucide-react";
 
 const PLAYER_ID = "youtube-player-persistence";
@@ -39,11 +40,12 @@ export default function PlayerModal({
 }) {
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isFirstSong, setIsFirstSong] = useState(true); 
+  const [isFirstSong, setIsFirstSong] = useState(true);
+  
+  // NEW STATE: Locks the player in minimized mode
+  const [isLocked, setIsLocked] = useState(false); 
   
   const onVideoEndRef = useRef(onVideoEnd);
-  
-  // Track mount status to prevent updates on unmounted component
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -59,9 +61,30 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
-  // Main Player Logic with RESILIENCE FIX
+  // 1. MUTE SYNC: Poll the YouTube player to see if user used the native embed mute button
   useEffect(() => {
-    // If no video, do nothing
+    const interval = setInterval(() => {
+        if (playerRef.current && typeof playerRef.current.isMuted === 'function') {
+            const playerMuted = playerRef.current.isMuted();
+            // If API says muted, but React says unmuted (or vice versa), sync it up
+            if (playerMuted !== isMuted) {
+                onToggleMute();
+            }
+        }
+    }, 500); // Check every half second
+
+    return () => clearInterval(interval);
+  }, [isMuted, onToggleMute]);
+
+  // 2. LOCK LOGIC: If Locked, force minimize when videoId changes
+  useEffect(() => {
+    if (isLocked) {
+        onMinimize();
+    }
+  }, [videoId]); // Only triggers when the song changes
+
+  // Main Player Logic
+  useEffect(() => {
     if (!videoId) {
         setIsFirstSong(true);
         return;
@@ -70,7 +93,6 @@ export default function PlayerModal({
     let initTimeout;
 
     const initPlayer = () => {
-      // Retry if API isn't ready
       if (!window.YT || !window.YT.Player) {
         initTimeout = setTimeout(initPlayer, 100);
         return;
@@ -81,7 +103,6 @@ export default function PlayerModal({
           const currentData = target.getVideoData ? target.getVideoData() : null;
           const currentId = currentData ? currentData.video_id : null;
 
-          // Only load if it's actually a different video or if the player stopped
           if (currentId !== videoId) {
              setIsFirstSong(false);
              target.loadVideoById({
@@ -90,7 +111,6 @@ export default function PlayerModal({
              });
              setIsPlaying(true);
           } else {
-             // If it's the same video (re-opened), just ensure it plays
              if (target.getPlayerState() !== window.YT.PlayerState.PLAYING) {
                 target.playVideo();
              }
@@ -100,8 +120,6 @@ export default function PlayerModal({
         }
       };
       
-      // Check if player instance exists AND if the iframe is actually in the DOM
-      // (Fixes the "black screen" when re-opening the same song)
       const playerIframe = playerRef.current ? playerRef.current.getIframe() : null;
       
       if (playerRef.current && playerIframe && document.contains(playerIframe)) {
@@ -109,8 +127,6 @@ export default function PlayerModal({
         return;
       }
 
-      // If we get here, we need a fresh player instance
-      // First, safety destroy any lingering instance to prevent ghosts
       if (playerRef.current) {
          try { playerRef.current.destroy(); } catch(e) {}
       }
@@ -163,17 +179,12 @@ export default function PlayerModal({
       window.onYouTubeIframeAPIReady = initPlayer;
     }
 
-    // CLEANUP: Determines Player Resilience
     return () => {
       clearTimeout(initTimeout);
-      // NOTE: We do NOT destroy the player here if we are just minimizing. 
-      // But if the component actually unmounts (modal close), we should eventually clean up.
-      // However, for persistent audio, we usually keep the ref. 
-      // The "black screen" fix is handled by the 'document.contains' check above.
     };
   }, [videoId]); 
 
-  // Mute/Unmute Logic
+  // React Mute Logic (Outgoing)
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -214,6 +225,12 @@ export default function PlayerModal({
     onSkip();
   };
   
+  // Toggle Lock State Handler
+  const toggleLock = (e) => {
+      e.stopPropagation(); // Don't trigger maximize
+      setIsLocked(!isLocked);
+  };
+  
   let tagsToDisplay = [];
   if (request) {
       tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
@@ -251,16 +268,13 @@ export default function PlayerModal({
         {!isMinimized && (
             <div className="flex-1 flex flex-col overflow-y-auto sm:overflow-visible"> 
               
-              {/* MAIN CONTENT PADDING */}
               <div className="p-4 sm:p-6 pb-2">
-                {/* Header Row: Title/Artist + Window Controls */}
                 <div className="flex justify-between items-start mb-4 gap-2">
                   <div className="min-w-0 pr-2">
                     <h2 className="text-xl sm:text-3xl font-bold text-white mb-1 truncate leading-tight tracking-tight">{request.title}</h2> 
                     <p className="text-md sm:text-lg text-gray-400 truncate font-medium">{request.artist}</p>
                   </div>
                   
-                  {/* Window Controls */}
                   <div className="flex gap-2 flex-shrink-0">
                     <button onClick={onMinimize} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-gray-300 transition-colors" title="Minimize">
                       <Minimize2 size={20} />
@@ -271,10 +285,7 @@ export default function PlayerModal({
                   </div>
                 </div>
 
-                {/* Info Row: Meta + Tags + Up Next */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-b border-white/5 pb-6">
-                  
-                  {/* Left: Request Info & Tags */}
                   <div className="flex flex-col gap-3 w-full sm:w-auto">
                       <div className="flex items-center gap-2 text-sm text-gray-400">
                          <span className="font-medium text-gray-500">Requested by</span>
@@ -282,7 +293,6 @@ export default function PlayerModal({
                       </div>
                       
                       <div className="flex flex-wrap gap-2 items-center">
-                          {/* Status Badge */}
                           <div className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider ${
                             request.status === 'approved' ? 'bg-blue-500/20 text-blue-400' :
                             request.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
@@ -290,9 +300,7 @@ export default function PlayerModal({
                           }`}>
                             {request.status}
                           </div>
-
                           <div className="hidden sm:block h-4 w-[1px] bg-white/10 mx-1"></div>
-
                           {tagsToDisplay.map(tag => (
                              <span key={tag} className="px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-300 border border-white/5">
                                 {tag}
@@ -301,7 +309,6 @@ export default function PlayerModal({
                       </div>
                   </div>
 
-                  {/* Right: Up Next */}
                   {nextSong && (
                     <div className="w-full sm:w-auto flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 sm:max-w-xs mt-2 sm:mt-0">
                       <div className="text-xs font-bold text-gray-500 uppercase tracking-wider shrink-0">Up Next</div>
@@ -311,38 +318,28 @@ export default function PlayerModal({
                 </div>
               </div>
               
-              {/* CONTROL BAR (Footer) - RESPONSIVE LAYOUT */}
+              {/* CONTROL BAR (Footer) */}
               <div className="bg-[#0e0e14] p-4 sm:px-6 mt-auto border-t border-white/5">
-                {/* MOBILE: Flex Column (Playback -> Settings -> Admin)
-                   DESKTOP: 3-Column Grid 
-                */}
                 <div className="flex flex-col gap-6 sm:grid sm:grid-cols-3 sm:gap-4 items-center">
-
-                    {/* 1. Playback Controls (Mobile: Top / Desktop: Center) */}
-                    {/* Order: 2 on desktop to be in middle, but 1 on mobile to be top */}
                     <div className="flex items-center justify-center gap-6 order-1 sm:order-2 w-full sm:w-auto">
-                      <button onClick={onSkip} className="text-gray-500 hover:text-white transition-colors p-2 sm:hidden rotate-180" title="Previous (Visual only)">
+                      <button onClick={onSkip} className="text-gray-500 hover:text-white transition-colors p-2 sm:hidden rotate-180" title="Previous (Visual)">
                         <SkipForward size={24} />
                       </button>
-                      
                       <button 
                         onClick={handleTogglePlay} 
                         className="w-16 h-16 sm:w-14 sm:h-14 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-all shadow-lg shadow-white/10"
                       >
                         {isPlaying ? <Pause size={32} className="fill-black" /> : <Play size={32} className="fill-black ml-1" />}
                       </button>
-                      
                       <button onClick={onSkip} className="text-gray-400 hover:text-white transition-colors p-2" title="Skip">
                         <SkipForward size={28} />
                       </button>
                     </div>
 
-                    {/* 2. Settings (Mobile: Middle / Desktop: Right) */}
                     <div className="flex items-center justify-center sm:justify-end gap-4 order-2 sm:order-3 w-full sm:w-auto">
                         <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "text-gray-500 hover:text-gray-300" : "text-gray-300 hover:text-white"}`}>
                             {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                         </button>
-                        
                         <button 
                             onClick={onToggleAutoPlay} 
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border ${
@@ -355,9 +352,7 @@ export default function PlayerModal({
                         </button>
                     </div>
 
-                    {/* 3. Admin Actions (Mobile: Bottom / Desktop: Left) */}
                     <div className="flex w-full sm:w-auto gap-3 order-3 sm:order-1 sm:justify-start">
-                        {/* Mobile: Full width buttons. Desktop: Auto width */}
                         {(request.status === 'pending') ? (
                             <div className="grid grid-cols-2 gap-3 w-full sm:flex sm:w-auto sm:gap-2">
                                 <button onClick={onApprove} className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors">
@@ -376,7 +371,6 @@ export default function PlayerModal({
                             </button>
                         )}
                     </div>
-
                 </div>
               </div>
             </div>
@@ -385,7 +379,7 @@ export default function PlayerModal({
         {/* Minimized Player UI */}
         {isMinimized && request && (
           <div className="flex items-center p-3 w-full bg-[#12121a] border-t border-white/10">
-            {/* ... (Same minimized code) ... */}
+            {/* Click to Maximize Area */}
             <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0 group" onClick={onMaximize}>
               <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative ${isPlaying ? 'bg-gray-800' : 'bg-gray-900'}`}>
                  {request.thumbnail ? (
@@ -403,13 +397,30 @@ export default function PlayerModal({
               </div>
             </div>
             
+            {/* Minimized Controls */}
             <div className="flex items-center gap-1 ml-4 flex-shrink-0">
+               {/* Lock Toggle */}
+               <button 
+                 onClick={toggleLock} 
+                 className={`p-2 rounded-lg transition-colors mr-2 ${isLocked ? "bg-pink-500/20 text-pink-400" : "text-gray-500 hover:bg-white/5"}`}
+                 title={isLocked ? "Unlock Player" : "Lock Minimized"}
+               >
+                 {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+               </button>
+
                <button onClick={handleTogglePlay} className="p-2.5 bg-white text-black rounded-full hover:scale-105 transition-transform mr-2">
                 {isPlaying ? <Pause size={16} className="fill-black" /> : <Play size={16} className="fill-black ml-0.5" />} 
               </button>
-              <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-gray-300">
+              
+              <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-gray-300 hidden sm:block">
                 <SkipForward size={18} />
               </button>
+              
+              {/* Maximize Button */}
+              <button onClick={onMaximize} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1" title="Maximize">
+                <Maximize2 size={18} />
+              </button>
+
               <button onClick={onClose} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1">
                 <X size={18} />
               </button>
