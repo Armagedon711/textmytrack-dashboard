@@ -49,7 +49,7 @@ export default function RequestItem({
   };
 
   // --- BUTTON STYLES ---
-  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-all duration-200";
+  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-colors duration-200"; // Removed transition-all to prevent jitter
   const btnPrimaryBlue = `${btnBase} px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-900/20`;
   const btnPrimaryGreen = `${btnBase} px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold shadow-lg shadow-green-900/20`;
   const btnSecondary = `${btnBase} px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 hover:text-white text-xs font-medium`;
@@ -62,7 +62,8 @@ export default function RequestItem({
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group relative rounded-xl border transition-all duration-200 overflow-hidden ${
+          // REMOVED "transition-all duration-200" to fix Drag Jitter
+          className={`group relative rounded-xl border overflow-hidden ${
             snapshot.isDragging 
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
               : isCurrentlyPlaying 
@@ -74,7 +75,7 @@ export default function RequestItem({
           {/* Main Card Content */}
           <div className="flex items-stretch p-3 sm:p-4 gap-3">
             
-            {/* 1. Drag Handle (Now Visible on Mobile) */}
+            {/* 1. Drag Handle */}
             <div 
                {...provided.dragHandleProps}
                className="flex w-6 sm:w-8 items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors rounded-lg"
@@ -125,7 +126,7 @@ export default function RequestItem({
                       <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">{req.artist}</p>
                   </div>
 
-                  {/* Desktop Status Badge (Hidden on very small screens if needed, but useful) */}
+                  {/* Status Badge */}
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
                       isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
                       isPlayedStatus ? "text-gray-500 border border-white/5" : 
@@ -218,10 +219,11 @@ export default function RequestItem({
           </div>
 
           {/* --- ACTION BUTTONS (Mobile) --- */}
-          <div className="sm:hidden grid grid-cols-[1fr,auto] gap-1 p-2 border-t border-white/5 bg-black/20">
+          {/* UPDATED: Changed from Grid to Flex to ensure layout consistency across all tabs */}
+          <div className="sm:hidden flex items-center gap-2 p-2 border-t border-white/5 bg-black/20">
              {isPending ? (
                <>
-                <button onClick={() => onUpdateStatus(req.id, "approved")} className="h-10 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 h-10 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
                   <ThumbsUp size={16} /> Approve
                 </button>
                 <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
@@ -230,7 +232,7 @@ export default function RequestItem({
                </>
              ) : isApproved ? (
                 <>
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="h-10 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition-transform">
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 h-10 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition-transform">
                     <Check size={16} /> Mark Played
                   </button>
                   <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
@@ -238,14 +240,14 @@ export default function RequestItem({
                   </button>
                 </>
              ) : (
-                <div className="col-span-2 flex gap-2">
+                <>
                   <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 h-10 bg-white/5 border border-white/10 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 active:bg-white/10 transition-colors">
                      <RotateCcw size={14} /> {isRejected ? "Restore" : "Re-Queue"}
                   </button>
                   <button onClick={() => onDelete(req.id)} className="h-10 w-12 bg-white/5 text-red-400 rounded-lg flex items-center justify-center active:bg-red-500/10 transition-colors">
                       <Trash2 size={18} />
                   </button>
-                </div>
+                </>
              )}
           </div>
         </div>
