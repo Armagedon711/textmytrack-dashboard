@@ -1,6 +1,7 @@
 import { 
   Play, ThumbsUp, Ban, Check, Trash2, Clock, 
-  ExternalLink, Music, User, RotateCcw, GripVertical
+  ExternalLink, Music, User, RotateCcw, GripVertical, 
+  ListMusic, Zap, Smile
 } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd"; 
 
@@ -26,7 +27,6 @@ export default function RequestItem({
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  // BAN USER HANDLER
   const handleBanUser = async () => {
     if (!confirm(`Are you sure you want to BAN ${req.requestedBy}? They will no longer be able to request songs.`)) return;
     
@@ -40,176 +40,214 @@ export default function RequestItem({
     alert("User has been banned.");
   };
 
+  // Helper to render small tags
+  const renderTag = (text, colorClass, icon = null) => {
+      if (!text || text === "Unknown" || text === "FILL_THIS") return null;
+      return (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border flex items-center gap-1 capitalize ${colorClass}`}>
+           {icon} {text}
+        </span>
+      );
+  };
+
   return (
     <Draggable draggableId={req.id.toString()} index={index}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group p-3 sm:p-4 rounded-xl border transition-colors duration-200 ${
+          className={`group relative p-3 sm:p-4 rounded-xl border transition-all duration-200 ${
             snapshot.isDragging 
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
               : isCurrentlyPlaying 
-                ? "bg-pink-500/10 border-pink-500/30" 
+                ? "bg-pink-500/5 border-pink-500/30" 
                 : "bg-[#12121a] border-white/5 hover:border-white/10"
           }`}
           style={provided.draggableProps.style}
         >
-          {/* Main Row */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          {/* --- TOP RIGHT STATUS BADGE --- */}
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
+                  isPlayedStatus ? "bg-green-500/20 text-green-400 border border-green-500/20" : 
+                  isApproved ? "bg-blue-500/20 text-blue-400 border border-blue-500/20" : 
+                  isRejected ? "bg-red-500/20 text-red-400 border border-red-500/20" : 
+                  "bg-yellow-500/20 text-yellow-400 border border-yellow-500/20"
+                }`}>
+                  {isCurrentlyPlaying ? "Now Playing" : isPlayedStatus ? "Played" : req.status}
+             </span>
+          </div>
+
+          <div className="flex items-start gap-3 sm:gap-4 pr-16"> {/* pr-16 leaves room for badge */}
             
             {/* Desktop Drag Handle */}
             <div 
                {...provided.dragHandleProps}
-               className="hidden md:flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 text-gray-500 cursor-grab active:cursor-grabbing hover:bg-white/10 hover:text-white"
+               className="hidden md:flex mt-2 w-8 h-8 rounded-lg bg-white/5 items-center justify-center flex-shrink-0 text-gray-500 cursor-grab active:cursor-grabbing hover:bg-white/10 hover:text-white"
             >
                <GripVertical size={16} />
             </div>
 
-            {/* Thumbnail - FIXED: Added scale-[1.35] to crop YouTube black bars */}
-            <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb">
+            {/* Thumbnail */}
+            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb">
               {req.thumbnail ? (
-                <img 
-                  src={req.thumbnail} 
-                  alt={req.title} 
-                  className="w-full h-full object-cover scale-[1.35]" 
-                />
+                <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover scale-[1.35]" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Music size={20} className="text-gray-600" />
-                </div>
+                <div className="w-full h-full flex items-center justify-center"><Music size={24} className="text-gray-600" /></div>
               )}
 
-              {/* Overlays */}
+              {/* Play Overlay */}
               {hasUrl && !isCurrentlyPlaying && (
-                <button 
-                  onClick={() => onPlay(req)} 
-                  className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 sm:group-hover/thumb:opacity-100 sm:opacity-0 transition-opacity"
-                >
-                  <Play size={20} className="text-white fill-white" />
+                <button onClick={() => onPlay(req)} className="absolute inset-0 bg-black/40 flex items-center justify-center sm:opacity-0 sm:group-hover/thumb:opacity-100 transition-opacity">
+                  <div className="p-2 bg-white/20 backdrop-blur-sm rounded-full"><Play size={20} className="text-white fill-white ml-0.5" /></div>
                 </button>
               )}
-              {hasUrl && !isCurrentlyPlaying && (
-                 <button onClick={() => onPlay(req)} className="absolute inset-0 bg-black/30 flex items-center justify-center sm:hidden">
-                   <Play size={16} className="text-white fill-white" />
-                 </button>
-              )}
-
+              
+              {/* Equalizer Overlay (Playing) */}
               {isCurrentlyPlaying && (
-                <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
-                  <div className="flex gap-0.5">
-                    {[0, 150, 300].map(d => <div key={d} className="w-1 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />)}
+                <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
+                  <div className="flex gap-0.5 items-end h-4">
+                    {[0, 150, 300].map(d => <div key={d} className="w-1 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms`, height: '100%' }} />)}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Text Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  {hasUrl ? (
-                    <button onClick={() => onPlay(req)} className="block w-full text-left group/title">
-                      <h3 className="font-semibold text-white text-sm sm:text-base truncate group-hover/title:text-pink-400 transition-colors">
+            {/* Info Column */}
+            <div className="flex-1 min-w-0 flex flex-col justify-center min-h-[4rem]">
+              
+              {/* Title & Artist */}
+              <div className="mb-2">
+                {hasUrl ? (
+                    <button onClick={() => onPlay(req)} className="text-left group/title">
+                      <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors line-clamp-1">
                         {req.title}
-                        <ExternalLink size={12} className="inline-block ml-2 opacity-0 group-hover/title:opacity-100 transition-opacity text-pink-400" />
                       </h3>
                     </button>
                   ) : (
-                    <h3 className="font-semibold text-white text-sm sm:text-base truncate">{req.title}</h3>
+                    <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-1">{req.title}</h3>
                   )}
-                  <p className="text-xs sm:text-sm text-gray-400 truncate">{req.artist}</p>
-                </div>
-                
-                <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
-                  isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : 
-                  isPlayedStatus ? "bg-green-500/10 text-green-400" : 
-                  isApproved ? "bg-blue-500/10 text-blue-400" : 
-                  isRejected ? "bg-red-500/10 text-red-400" : 
-                  "bg-yellow-500/10 text-yellow-400"
-                }`}>
-                  {isCurrentlyPlaying ? "Playing" : isPlayedStatus ? "Played" : isApproved ? "Approved" : isRejected ? "Rejected" : "Pending"}
-                </span>
+                <p className="text-xs sm:text-sm text-gray-400 font-medium line-clamp-1">{req.artist}</p>
               </div>
 
-              {/* Metadata */}
-              <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] sm:text-xs text-gray-500 flex-wrap">
-                {req.explicit === "Explicit" && (
-                  <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Explicit</span>
-                )}
-                {req.explicit === "Clean" && (
-                  <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Clean</span>
-                )}
+              {/* Tags & Metadata Row */}
+              <div className="flex flex-wrap items-center gap-2">
+                 {/* Explicit/Clean */}
+                 {req.explicit === "Explicit" && renderTag("Explicit", "bg-red-500/10 text-red-400 border-red-500/20")}
+                 {req.explicit === "Clean" && renderTag("Clean", "bg-green-500/10 text-green-400 border-green-500/20")}
+                 
+                 {/* AI Tags - Show if space permits (flex-wrap handles this) */}
+                 {renderTag(req.genre, "bg-purple-500/10 text-purple-400 border-purple-500/20", <ListMusic size={10}/>)}
+                 {renderTag(req.energy, "bg-yellow-500/10 text-yellow-400 border-yellow-500/20", <Zap size={10}/>)}
+                 {renderTag(req.mood, "bg-blue-500/10 text-blue-400 border-blue-500/20", <Smile size={10}/>)}
 
-                <div className="flex items-center gap-1">
-                  <User size={10} />
-                  <button 
-                    onClick={handleBanUser}
-                    className="truncate max-w-[80px] sm:max-w-none hover:text-red-400 hover:underline transition-colors flex items-center gap-1"
-                    title="Click to Ban User"
-                  >
-                    {req.requestedBy}
-                  </button>
-                </div>
-                <span>•</span>
-                <div className="flex items-center gap-1">
-                  <Clock size={10} />
-                  <span>{timeAgo(req.requestedAt)}</span>
-                </div>
+                 <div className="w-[1px] h-3 bg-white/10 mx-1 hidden sm:block"></div>
+
+                 {/* User & Time */}
+                 <div className="flex items-center gap-3 text-[10px] text-gray-500 font-mono">
+                    <div className="flex items-center gap-1">
+                      <User size={10} />
+                      <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors" title="Ban User">
+                        {req.requestedBy}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock size={10} />
+                      <span>{timeAgo(req.requestedAt)}</span>
+                    </div>
+                 </div>
               </div>
-            </div>
-
-            {/* Desktop Action Buttons */}
-            <div className="hidden sm:flex items-center gap-2">
-               {isPending && (
-                 <>
-                   <button onClick={() => onUpdateStatus(req.id, "approved")} className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400" title="Approve">
-                     <ThumbsUp size={16} />
-                   </button>
-                   <button onClick={() => onUpdateStatus(req.id, "rejected")} className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400" title="Reject">
-                     <Ban size={16} />
-                   </button>
-                 </>
-               )}
-               {(isApproved || isPending) && (
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="p-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400" title="Mark Played">
-                    <Check size={16} />
-                  </button>
-               )}
-               {isPlayedStatus && (
-                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400" title="Move to Approved">
-                    <RotateCcw size={16} />
-                  </button>
-               )}
-               <button onClick={() => onDelete(req.id)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400">
-                 <Trash2 size={16} />
-               </button>
             </div>
           </div>
 
-          {/* Mobile Action Bar */}
-          <div className="sm:hidden flex items-center gap-2 mt-3 pt-2 border-t border-white/5">
+          {/* --- ACTION BUTTONS (Desktop) --- */}
+          <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-2">
+             
+             {/* PENDING ACTIONS */}
+             {isPending && (
+               <>
+                 <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
+                   <ThumbsUp size={14} /> Approve
+                 </button>
+                 <button onClick={() => onUpdateStatus(req.id, "rejected")} className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors" title="Reject">
+                   <Ban size={16} />
+                 </button>
+               </>
+             )}
+
+             {/* APPROVED ACTIONS */}
+             {isApproved && (
+                <>
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="px-3 py-1.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
+                    <Check size={14} /> Mark Played
+                  </button>
+                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Reject">
+                    <Ban size={16} />
+                  </button>
+                </>
+             )}
+
+             {/* REJECTED ACTIONS - NEW: Add Move to Approved */}
+             {isRejected && (
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-blue-500/10 text-gray-400 hover:text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
+                  <RotateCcw size={14} /> Restore
+                </button>
+             )}
+
+             {/* PLAYED ACTIONS */}
+             {isPlayedStatus && (
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-blue-500/10 text-gray-400 hover:text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
+                  <RotateCcw size={14} /> Re-Queue
+                </button>
+             )}
+
+             {/* DELETE (Always Available) */}
+             <button onClick={() => onDelete(req.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Delete">
+               <Trash2 size={16} />
+             </button>
+          </div>
+
+          {/* --- ACTION BUTTONS (Mobile) --- */}
+          <div className="sm:hidden flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
              {isPending ? (
                <>
-                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-blue-500/10 text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
                   <ThumbsUp size={14} /> Approve
                 </button>
-                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-3 py-2 bg-red-500/10 text-red-400 rounded-lg">
-                  <Ban size={14} />
+                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-2 bg-white/5 text-gray-400 rounded-lg text-xs font-medium">
+                  <Ban size={16} />
+                </button>
+                <button onClick={() => onDelete(req.id)} className="px-3 py-2 bg-white/5 text-gray-400 rounded-lg">
+                   <Trash2 size={16} />
                 </button>
                </>
-             ) : isApproved || isPlayedStatus ? ( 
-                <button onClick={() => onUpdateStatus(req.id, isPlayedStatus ? "approved" : "played")} 
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
-                           isPlayedStatus ? "bg-blue-500/10 text-blue-400" : "bg-green-500/10 text-green-400"
-                        }`}
-                >
-                   {isPlayedStatus ? (<><RotateCcw size={14} /> Move to Approved</>) : (<><Check size={14} /> Mark Played</>)}
-                </button>
+             ) : isApproved ? (
+                <>
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 py-2 bg-green-500/10 text-green-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                    <Check size={14} /> Mark Played
+                  </button>
+                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-3 py-2 bg-white/5 text-gray-400 rounded-lg">
+                    <Ban size={16} />
+                  </button>
+                </>
+             ) : isRejected ? (
+                <>
+                   <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-white/5 text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                     <RotateCcw size={14} /> Restore
+                   </button>
+                   <button onClick={() => onDelete(req.id)} className="px-3 py-2 bg-white/5 text-red-400 rounded-lg">
+                      <Trash2 size={16} />
+                   </button>
+                </>
              ) : (
-                <button onClick={() => onDelete(req.id)} className="flex-1 py-2 bg-white/5 text-gray-400 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
-                   <Trash2 size={14} /> Remove
-                </button>
+                <div className="flex w-full gap-2">
+                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-white/5 text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                     <RotateCcw size={14} /> Re-Queue
+                  </button>
+                  <button onClick={() => onDelete(req.id)} className="px-3 py-2 bg-white/5 text-red-400 rounded-lg">
+                      <Trash2 size={16} />
+                  </button>
+                </div>
              )}
           </div>
         </div>
