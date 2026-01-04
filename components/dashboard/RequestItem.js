@@ -1,7 +1,7 @@
 import { 
   Play, ThumbsUp, Ban, Check, Trash2, Clock, 
   User, RotateCcw, GripVertical, 
-  ListMusic, Zap, Smile, Music
+  Music
 } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd"; 
 
@@ -48,8 +48,23 @@ export default function RequestItem({
       );
   };
 
+  // Shared Tags Component to avoid duplication
+  const TagsRow = ({ className }) => (
+    <div className={`flex-wrap items-center gap-1.5 ${className}`}>
+        {req.explicit === "Explicit" && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-red-500/20 bg-red-500/10 text-red-400">Explicit</span>
+        )}
+        {req.explicit === "Clean" && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-green-500/20 bg-green-500/10 text-green-400">Clean</span>
+        )}
+        {renderTag(req.genre)}
+        {renderTag(req.energy)}
+        {renderTag(req.mood)}
+    </div>
+  );
+
   // --- BUTTON STYLES ---
-  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-colors duration-200"; // Removed transition-all to prevent jitter
+  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-colors duration-200";
   const btnPrimaryBlue = `${btnBase} px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-900/20`;
   const btnPrimaryGreen = `${btnBase} px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold shadow-lg shadow-green-900/20`;
   const btnSecondary = `${btnBase} px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 hover:text-white text-xs font-medium`;
@@ -62,7 +77,6 @@ export default function RequestItem({
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          // REMOVED "transition-all duration-200" to fix Drag Jitter
           className={`group relative rounded-xl border overflow-hidden ${
             snapshot.isDragging 
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
@@ -72,100 +86,97 @@ export default function RequestItem({
           }`}
           style={provided.draggableProps.style}
         >
-          {/* Main Card Content */}
-          <div className="flex items-stretch p-3 sm:p-4 gap-3">
+          {/* Main Card Content Wrapper */}
+          <div className="p-3 sm:p-4">
             
-            {/* 1. Drag Handle */}
-            <div 
-               {...provided.dragHandleProps}
-               className="flex w-6 sm:w-8 items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors rounded-lg"
-            >
-               <GripVertical size={20} />
-            </div>
-
-            {/* 2. Thumbnail */}
-            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb self-start">
-              {req.thumbnail ? (
-                <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover scale-[1.35]" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center"><Music size={24} className="text-gray-600" /></div>
-              )}
-
-              {/* Play Overlay */}
-              {hasUrl && !isCurrentlyPlaying && (
-                <button onClick={() => onPlay(req)} className="absolute inset-0 bg-black/40 flex items-center justify-center sm:opacity-0 sm:group-hover/thumb:opacity-100 transition-opacity">
-                  <div className="p-2 bg-white/20 backdrop-blur-sm rounded-full"><Play size={20} className="text-white fill-white ml-0.5" /></div>
-                </button>
-              )}
-              
-              {/* Equalizer (Playing) */}
-              {isCurrentlyPlaying && (
-                <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
-                  <div className="flex gap-0.5 items-end h-4">
-                    {[0, 150, 300].map(d => <div key={d} className="w-1 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms`, height: '100%' }} />)}
-                  </div>
+            {/* Top Section: Drag, Thumb, Info */}
+            <div className="flex items-stretch gap-3">
+                {/* 1. Drag Handle */}
+                <div 
+                  {...provided.dragHandleProps}
+                  className="flex w-6 sm:w-8 items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors rounded-lg"
+                >
+                  <GripVertical size={20} />
                 </div>
-              )}
-            </div>
 
-            {/* 3. Info Column */}
-            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
-              
-              {/* Header: Title + Status Badge */}
-              <div className="flex justify-between items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    {hasUrl ? (
-                        <button onClick={() => onPlay(req)} className="text-left group/title w-full">
-                          <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors truncate">
-                            {req.title}
-                          </h3>
-                        </button>
-                      ) : (
-                        <h3 className="font-bold text-white text-sm sm:text-base leading-tight truncate">{req.title}</h3>
-                      )}
-                      <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">{req.artist}</p>
+                {/* 2. Thumbnail */}
+                <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb self-start">
+                  {req.thumbnail ? (
+                    <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover scale-[1.35]" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center"><Music size={24} className="text-gray-600" /></div>
+                  )}
+
+                  {/* Play Overlay */}
+                  {hasUrl && !isCurrentlyPlaying && (
+                    <button onClick={() => onPlay(req)} className="absolute inset-0 bg-black/40 flex items-center justify-center sm:opacity-0 sm:group-hover/thumb:opacity-100 transition-opacity">
+                      <div className="p-2 bg-white/20 backdrop-blur-sm rounded-full"><Play size={20} className="text-white fill-white ml-0.5" /></div>
+                    </button>
+                  )}
+                  
+                  {/* Equalizer (Playing) */}
+                  {isCurrentlyPlaying && (
+                    <div className="absolute inset-0 bg-pink-500/40 flex items-center justify-center">
+                      <div className="flex gap-0.5 items-end h-4">
+                        {[0, 150, 300].map(d => <div key={d} className="w-1 bg-white rounded-full animate-pulse" style={{ animationDelay: `${d}ms`, height: '100%' }} />)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Info Column */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
+                  
+                  {/* Header: Title + Status Badge */}
+                  <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        {hasUrl ? (
+                            <button onClick={() => onPlay(req)} className="text-left group/title w-full">
+                              <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors truncate">
+                                {req.title}
+                              </h3>
+                            </button>
+                          ) : (
+                            <h3 className="font-bold text-white text-sm sm:text-base leading-tight truncate">{req.title}</h3>
+                          )}
+                          <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">{req.artist}</p>
+                      </div>
+
+                      {/* Status Badge */}
+                      <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                          isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
+                          isPlayedStatus ? "text-gray-500 border border-white/5" : 
+                          isApproved ? "text-blue-400/80 border border-blue-500/10 bg-blue-500/5" : 
+                          isRejected ? "text-red-400/80 border border-red-500/10 bg-red-500/5" : 
+                          "text-yellow-400/80 border border-yellow-500/10 bg-yellow-500/5"
+                        }`}>
+                          {isCurrentlyPlaying ? "Playing" : isPlayedStatus ? "Played" : req.status}
+                      </span>
                   </div>
 
-                  {/* Status Badge */}
-                  <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
-                      isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
-                      isPlayedStatus ? "text-gray-500 border border-white/5" : 
-                      isApproved ? "text-blue-400/80 border border-blue-500/10 bg-blue-500/5" : 
-                      isRejected ? "text-red-400/80 border border-red-500/10 bg-red-500/5" : 
-                      "text-yellow-400/80 border border-yellow-500/10 bg-yellow-500/5"
-                    }`}>
-                      {isCurrentlyPlaying ? "Playing" : isPlayedStatus ? "Played" : req.status}
-                  </span>
-              </div>
+                  {/* User Info Row */}
+                  <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-1 rounded-md w-fit max-w-full">
+                    <div className="flex items-center gap-1 min-w-0">
+                        <User size={10} className="shrink-0"/>
+                        <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors truncate">
+                          {req.requestedBy}
+                        </button>
+                    </div>
+                    <span className="text-gray-700 mx-0.5">•</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                        <Clock size={10} />
+                        <span>{timeAgo(req.requestedAt)}</span>
+                    </div>
+                  </div>
 
-              {/* User Info Row */}
-              <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-1 rounded-md w-fit max-w-full">
-                 <div className="flex items-center gap-1 min-w-0">
-                    <User size={10} className="shrink-0"/>
-                    <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors truncate">
-                      {req.requestedBy}
-                    </button>
-                 </div>
-                 <span className="text-gray-700 mx-0.5">•</span>
-                 <div className="flex items-center gap-1 shrink-0">
-                    <Clock size={10} />
-                    <span>{timeAgo(req.requestedAt)}</span>
-                 </div>
-              </div>
-
-              {/* Tags Row */}
-              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                 {req.explicit === "Explicit" && (
-                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-red-500/20 bg-red-500/10 text-red-400">Explicit</span>
-                 )}
-                 {req.explicit === "Clean" && (
-                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-green-500/20 bg-green-500/10 text-green-400">Clean</span>
-                 )}
-                 {renderTag(req.genre)}
-                 {renderTag(req.energy)}
-                 {renderTag(req.mood)}
-              </div>
+                  {/* Desktop Tags (Hidden on Mobile) */}
+                  <TagsRow className="hidden sm:flex mt-0.5" />
+                </div>
             </div>
+
+            {/* Mobile Tags (Visible only on Mobile, Full Width) */}
+            <TagsRow className="flex sm:hidden mt-3" />
+            
           </div>
 
           {/* --- ACTION BUTTONS (Desktop) --- */}
@@ -219,7 +230,6 @@ export default function RequestItem({
           </div>
 
           {/* --- ACTION BUTTONS (Mobile) --- */}
-          {/* UPDATED: Changed from Grid to Flex to ensure layout consistency across all tabs */}
           <div className="sm:hidden flex items-center gap-2 p-2 border-t border-white/5 bg-black/20">
              {isPending ? (
                <>
