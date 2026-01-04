@@ -63,12 +63,18 @@ export default function RequestItem({
     </div>
   );
 
-  // --- BUTTON STYLES ---
-  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-colors duration-200";
-  const btnPrimaryBlue = `${btnBase} px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-900/20`;
-  const btnPrimaryGreen = `${btnBase} px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold shadow-lg shadow-green-900/20`;
-  const btnSecondary = `${btnBase} px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 hover:text-white text-xs font-medium`;
-  const btnIcon = `${btnBase} p-2 text-gray-500 hover:bg-white/5`;
+  // --- BUTTON STYLES (UPDATED: Subtler Colors) ---
+  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-colors duration-200 border";
+  
+  // Blue: Translucent background, blue text/border
+  const btnPrimaryBlue = `${btnBase} px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20 text-blue-400 text-xs font-semibold`;
+  
+  // Green: Translucent background, green text/border
+  const btnPrimaryGreen = `${btnBase} px-4 py-2 bg-green-500/10 hover:bg-green-500/20 border-green-500/20 text-green-400 text-xs font-semibold`;
+  
+  // Secondary/Ghost
+  const btnSecondary = `${btnBase} px-3 py-2 bg-white/5 hover:bg-white/10 border-white/5 text-gray-300 hover:text-white text-xs font-medium`;
+  const btnIcon = `rounded-lg p-2 text-gray-500 hover:bg-white/5 border border-transparent transition-colors`;
   const btnIconDestructive = `${btnIcon} hover:text-red-400 hover:bg-red-500/10`;
 
   return (
@@ -82,8 +88,7 @@ export default function RequestItem({
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
               : isCurrentlyPlaying 
                 ? "bg-pink-500/5 border-pink-500/30" 
-                : "bg-[#181824] md:bg-[#12121a] border-white/10 md:border-white/5 hover:border-white/10" 
-                // ^ UPDATED: Lighter bg (#181824) and stronger border (white/10) on mobile
+                : "bg-[#181824] md:bg-[#12121a] border-white/10 md:border-white/5 hover:border-white/10"
           }`}
           style={provided.draggableProps.style}
         >
@@ -255,7 +260,7 @@ export default function RequestItem({
           <div className="sm:hidden flex items-center gap-2 p-2 border-t border-white/5 bg-black/20">
              {isPending ? (
                <>
-                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 h-10 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 h-10 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 active:bg-blue-500/20 transition-colors">
                   <ThumbsUp size={16} /> Approve
                 </button>
                 <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
@@ -264,7 +269,7 @@ export default function RequestItem({
                </>
              ) : isApproved ? (
                 <>
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 h-10 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition-transform">
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 h-10 bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 active:bg-green-500/20 transition-colors">
                     <Check size={16} /> Mark Played
                   </button>
                   <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
