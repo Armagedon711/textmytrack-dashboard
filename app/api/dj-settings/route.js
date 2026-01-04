@@ -50,7 +50,6 @@ function extractDJTag(message) {
 
 /**
  * Find DJ by tag (case-insensitive)
- * UPDATED: Now fetches request limit settings
  */
 async function findDJByTag(tag) {
   if (!tag) return null;
@@ -71,7 +70,6 @@ async function findDJByTag(tag) {
 
 /**
  * Find DJ by phone number (tries multiple formats)
- * UPDATED: Now fetches request limit settings
  */
 async function findDJByPhone(phone) {
   if (!phone) return null;
@@ -88,8 +86,6 @@ async function findDJByPhone(phone) {
     '1' + last10,
   ];
 
-  console.log("findDJByPhone - searching for variants:", phoneVariants);
-
   // First try exact matches
   for (const variant of phoneVariants) {
     if (!variant) continue;
@@ -100,35 +96,25 @@ async function findDJByPhone(phone) {
       .eq("twilio_number", variant)
       .maybeSingle();
 
-    if (error) console.error("Error searching for variant", variant, ":", error);
-    if (data) {
-      console.log("Found DJ with exact match:", variant, "->", data.id);
-      return data;
-    }
+    if (data) return data;
   }
   
   // Fallback: search using LIKE with last 10 digits
   if (last10 && last10.length === 10) {
-    console.log("Trying LIKE search with last 10 digits:", last10);
-    
     const { data, error } = await supabaseAdmin
       .from("dj_profiles")
       .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
       .like("twilio_number", `%${last10}`)
       .maybeSingle();
 
-    if (data) {
-      console.log("Found DJ with LIKE search:", data.twilio_number, "->", data.id);
-      return data;
-    }
+    if (data) return data;
   }
   
-  console.log("No DJ found for any phone variant");
   return null;
 }
 
 /**
- * Find all DJs with the same twilio_number (for shared universal number)
+ * Find all DJs with the same twilio_number
  */
 async function findAllDJsOnNumber(phone) {
   if (!phone) return [];
@@ -144,43 +130,34 @@ async function findAllDJsOnNumber(phone) {
   for (const variant of phoneVariants) {
     if (!variant) continue;
     
-    const { data, error } = await supabaseAdmin
+    const { data } = await supabaseAdmin
       .from("dj_profiles")
       .select("id, tag, name")
       .eq("twilio_number", variant);
 
-    if (data && data.length > 0) {
-      return data;
-    }
+    if (data && data.length > 0) return data;
   }
   
   return [];
 }
 
-// Universal number
 const UNIVERSAL_NUMBER = "+18557105533";
 
+// =============================================================
+// GET HANDLER (Used by n8n workflow)
+// =============================================================
 export async function GET(request) {
   try {
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Supabase admin not initialized" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Supabase admin not initialized" }, { status: 500 });
     }
 
     const { searchParams } = new URL(request.url);
     const phone = searchParams.get("phone");
     const message = searchParams.get("message");
 
-    console.log("DJ Settings - Phone:", phone);
-    console.log("DJ Settings - Message:", message);
-
     if (!phone) {
-      return NextResponse.json(
-        { error: "Missing phone parameter. Use: ?phone=+1234567890&message=DJ Joey play song" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing phone parameter" }, { status: 400 });
     }
 
     const normalizedPhone = '+' + phone.replace(/\D/g, '');
@@ -188,98 +165,50 @@ export async function GET(request) {
                               phone === UNIVERSAL_NUMBER ||
                               phone.replace(/\D/g, '') === UNIVERSAL_NUMBER.replace(/\D/g, '');
 
-    console.log("Is Universal Number:", isUniversalNumber);
-
     let djProfile = null;
     let matchMethod = null;
     let extractedTag = null;
 
-    // =============================================================
-    // DEDICATED NUMBER (Headliner)
-    // =============================================================
+    // 1. DEDICATED NUMBER
     if (!isUniversalNumber) {
-      console.log("Dedicated number detected - bypassing tag system");
-      
       djProfile = await findDJByPhone(phone);
-      
       if (djProfile) {
         matchMethod = "dedicated_number";
-        console.log("Found DJ by dedicated number:", djProfile.name || djProfile.id);
-        
-        return NextResponse.json({
-          dj_id: djProfile.id,
-          preferred_platform: djProfile.preferred_platform || "youtube",
-          twilio_number: djProfile.twilio_number,
-          tag: djProfile.tag,
-          plan: djProfile.plan,
-          match_method: matchMethod,
-          accepting_requests: djProfile.accepting_requests !== false,
-          request_limit_count: djProfile.request_limit_count || 5,  // ADDED
-          request_limit_hours: djProfile.request_limit_hours || 1   // ADDED
-        });
       } else {
         return NextResponse.json({
           dj_id: null,
-          preferred_platform: "youtube",
-          note: "DJ not found for this number",
           error: "unknown_number",
           message: "This number is not registered"
         });
       }
     }
 
-    // =============================================================
-    // UNIVERSAL NUMBER
-    // =============================================================
-    console.log("Universal number - using tag system");
-
-    if (message) {
-      extractedTag = extractDJTag(message);
-      console.log("Extracted DJ Tag:", extractedTag);
-      
-      if (extractedTag) {
-        djProfile = await findDJByTag(extractedTag);
-        if (djProfile) {
-          matchMethod = "tag_match";
-          console.log("Found DJ by tag:", djProfile.tag);
+    // 2. UNIVERSAL NUMBER
+    if (isUniversalNumber) {
+      if (message) {
+        extractedTag = extractDJTag(message);
+        if (extractedTag) {
+          djProfile = await findDJByTag(extractedTag);
+          if (djProfile) matchMethod = "tag_match";
         }
       }
-    }
 
-    if (!djProfile) {
-      const allDJsOnNumber = await findAllDJsOnNumber(phone);
-      
-      if (allDJsOnNumber.length > 0) {
-        const availableTags = allDJsOnNumber
-          .filter(dj => dj.tag)
-          .map(dj => dj.tag);
-        
-        console.log("No tag match. Available tags:", availableTags);
+      if (!djProfile) {
+        const allDJsOnNumber = await findAllDJsOnNumber(phone);
+        const availableTags = allDJsOnNumber.filter(dj => dj.tag).map(dj => dj.tag);
         
         return NextResponse.json({
           dj_id: null,
-          preferred_platform: "youtube",
           note: "DJ not found, using defaults",
           error: "multiple_djs_no_tag",
           message: "Please include the DJ name in your request",
-          available_tags: availableTags,
-          hint: availableTags.length > 0 
-            ? `Try: "${availableTags[0]} [song name]"` 
-            : "Contact the DJ for their request format"
+          available_tags: availableTags
         });
       }
     }
 
-    // =============================================================
-    // RETURN RESULT
-    // =============================================================
-    if (!djProfile) {
-      return NextResponse.json({
-        dj_id: null,
-        preferred_platform: "youtube",
-        note: "DJ not found, using defaults"
-      });
-    }
+    // 3. RETURN RESULT
+    if (!djProfile) return NextResponse.json({ dj_id: null });
 
     return NextResponse.json({
       dj_id: djProfile.id,
@@ -290,15 +219,52 @@ export async function GET(request) {
       match_method: matchMethod,
       extracted_tag: extractedTag,
       accepting_requests: djProfile.accepting_requests !== false,
-      request_limit_count: djProfile.request_limit_count || 5,  // ADDED
-      request_limit_hours: djProfile.request_limit_hours || 1   // ADDED
+      request_limit_count: djProfile.request_limit_count || 5,
+      request_limit_hours: djProfile.request_limit_hours || 1
     });
 
   } catch (err) {
-    console.error("DJ Settings error:", err);
-    return NextResponse.json(
-      { error: err.message, dj_id: null, preferred_platform: "youtube" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// =============================================================
+// POST HANDLER (Used by Settings Modal)
+// =============================================================
+export async function POST(request) {
+  try {
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: "Supabase admin not initialized" }, { status: 500 });
+    }
+
+    // Parse the JSON body from the request
+    const body = await request.json();
+    const { dj_id, tag, request_limit_count, request_limit_hours } = body;
+
+    if (!dj_id) {
+      return NextResponse.json({ error: "Missing DJ ID" }, { status: 400 });
+    }
+
+    // Update the database
+    const { data, error } = await supabaseAdmin
+      .from('dj_profiles')
+      .update({
+        tag: tag,
+        request_limit_count: request_limit_count,
+        request_limit_hours: request_limit_hours
+      })
+      .eq('dj_id', dj_id)
+      .select();
+
+    if (error) {
+      console.error("Supabase Update Error:", error);
+      throw error;
+    }
+
+    return NextResponse.json({ success: true, data });
+
+  } catch (error) {
+    console.error("Settings Update Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
