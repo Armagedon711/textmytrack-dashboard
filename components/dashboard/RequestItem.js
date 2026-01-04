@@ -40,7 +40,6 @@ export default function RequestItem({
     alert("User has been banned.");
   };
 
-  // Helper to render small tags
   const renderTag = (text, colorClass, icon = null) => {
       if (!text || text === "Unknown" || text === "FILL_THIS") return null;
       return (
@@ -78,7 +77,7 @@ export default function RequestItem({
              </span>
           </div>
 
-          <div className="flex items-start gap-3 sm:gap-4 pr-16"> {/* pr-16 leaves room for badge */}
+          <div className="flex items-start gap-3 sm:gap-4 pr-16">
             
             {/* Desktop Drag Handle */}
             <div 
@@ -116,8 +115,8 @@ export default function RequestItem({
             {/* Info Column */}
             <div className="flex-1 min-w-0 flex flex-col justify-center min-h-[4rem]">
               
-              {/* Title & Artist */}
-              <div className="mb-2">
+              {/* Title */}
+              <div className="mb-0.5">
                 {hasUrl ? (
                     <button onClick={() => onPlay(req)} className="text-left group/title">
                       <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors line-clamp-1">
@@ -127,25 +126,17 @@ export default function RequestItem({
                   ) : (
                     <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-1">{req.title}</h3>
                   )}
-                <p className="text-xs sm:text-sm text-gray-400 font-medium line-clamp-1">{req.artist}</p>
               </div>
 
-              {/* Tags & Metadata Row */}
-              <div className="flex flex-wrap items-center gap-2">
-                 {/* Explicit/Clean */}
-                 {req.explicit === "Explicit" && renderTag("Explicit", "bg-red-500/10 text-red-400 border-red-500/20")}
-                 {req.explicit === "Clean" && renderTag("Clean", "bg-green-500/10 text-green-400 border-green-500/20")}
-                 
-                 {/* AI Tags - Show if space permits (flex-wrap handles this) */}
-                 {renderTag(req.genre, "bg-purple-500/10 text-purple-400 border-purple-500/20", <ListMusic size={10}/>)}
-                 {renderTag(req.energy, "bg-yellow-500/10 text-yellow-400 border-yellow-500/20", <Zap size={10}/>)}
-                 {renderTag(req.mood, "bg-blue-500/10 text-blue-400 border-blue-500/20", <Smile size={10}/>)}
-
-                 <div className="w-[1px] h-3 bg-white/10 mx-1 hidden sm:block"></div>
-
-                 {/* User & Time */}
-                 <div className="flex items-center gap-3 text-[10px] text-gray-500 font-mono">
-                    <div className="flex items-center gap-1">
+              {/* Artist + User Info Row (Moved Here) */}
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <p className="text-xs sm:text-sm text-gray-300 font-medium truncate max-w-[150px] sm:max-w-[200px]">{req.artist}</p>
+                  
+                  <span className="hidden sm:inline text-gray-700 text-[10px]">•</span>
+                  
+                  {/* User & Time Info */}
+                  <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-0.5 rounded-full">
+                    <div className="flex items-center gap-1 border-r border-white/10 pr-2">
                       <User size={10} />
                       <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors" title="Ban User">
                         {req.requestedBy}
@@ -157,13 +148,22 @@ export default function RequestItem({
                     </div>
                  </div>
               </div>
+
+              {/* Tags Row */}
+              <div className="flex flex-wrap items-center gap-2">
+                 {req.explicit === "Explicit" && renderTag("Explicit", "bg-red-500/10 text-red-400 border-red-500/20")}
+                 {req.explicit === "Clean" && renderTag("Clean", "bg-green-500/10 text-green-400 border-green-500/20")}
+                 
+                 {renderTag(req.genre, "bg-purple-500/10 text-purple-400 border-purple-500/20", <ListMusic size={10}/>)}
+                 {renderTag(req.energy, "bg-yellow-500/10 text-yellow-400 border-yellow-500/20", <Zap size={10}/>)}
+                 {renderTag(req.mood, "bg-blue-500/10 text-blue-400 border-blue-500/20", <Smile size={10}/>)}
+              </div>
             </div>
           </div>
 
           {/* --- ACTION BUTTONS (Desktop) --- */}
           <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-2">
              
-             {/* PENDING ACTIONS */}
              {isPending && (
                <>
                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
@@ -175,7 +175,6 @@ export default function RequestItem({
                </>
              )}
 
-             {/* APPROVED ACTIONS */}
              {isApproved && (
                 <>
                   <button onClick={() => onUpdateStatus(req.id, "played")} className="px-3 py-1.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
@@ -187,21 +186,18 @@ export default function RequestItem({
                 </>
              )}
 
-             {/* REJECTED ACTIONS - NEW: Add Move to Approved */}
              {isRejected && (
                 <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-blue-500/10 text-gray-400 hover:text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
                   <RotateCcw size={14} /> Restore
                 </button>
              )}
 
-             {/* PLAYED ACTIONS */}
              {isPlayedStatus && (
                 <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-blue-500/10 text-gray-400 hover:text-blue-400 text-xs font-medium flex items-center gap-1.5 transition-colors">
                   <RotateCcw size={14} /> Re-Queue
                 </button>
              )}
 
-             {/* DELETE (Always Available) */}
              <button onClick={() => onDelete(req.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Delete">
                <Trash2 size={16} />
              </button>
