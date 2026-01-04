@@ -126,7 +126,7 @@ export default function SettingsModal({
   const NavItem = ({ id, label, icon: Icon }) => (
     <button 
       onClick={() => setActiveSection(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl ${
+      className={`flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl whitespace-nowrap ${
         activeSection === id 
           ? "bg-pink-500/10 text-pink-400 border border-pink-500/20" 
           : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -141,25 +141,35 @@ export default function SettingsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
        <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
        
-       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex h-[600px] max-h-[90vh]">
+       {/* Changed: flex-col for mobile, md:flex-row for desktop */}
+       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[600px] max-h-[90vh]">
          
-         {/* LEFT SIDEBAR */}
-         <div className="w-64 bg-[#16161f] border-r border-white/5 flex flex-col p-4">
-            <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-               <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
-                 <Settings size={18} className="text-white" />
-               </div>
-               <h2 className="text-lg font-bold text-white">Settings</h2>
+         {/* LEFT SIDEBAR (Desktop) / TOP NAV (Mobile) */}
+         <div className="w-full md:w-64 bg-[#16161f] border-b md:border-b-0 md:border-r border-white/5 flex flex-col shrink-0">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 md:mb-4">
+                <div className="flex items-center gap-3">
+                   <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
+                     <Settings size={18} className="text-white" />
+                   </div>
+                   <h2 className="text-lg font-bold text-white">Settings</h2>
+                </div>
+                {/* Mobile Close Button visible in header */}
+                <button onClick={onClose} className="md:hidden p-2 hover:bg-white/10 rounded-lg text-gray-400">
+                  <X size={20} />
+                </button>
             </div>
 
-            <div className="space-y-1 flex-1">
+            {/* Nav Items - Horizontal on mobile, Vertical on desktop */}
+            <div className="flex md:flex-col overflow-x-auto md:overflow-visible px-4 md:px-2 space-x-2 md:space-x-0 md:space-y-1 pb-4 md:pb-0 scrollbar-hide">
               <NavItem id="profile" label="General Profile" icon={User} />
               <NavItem id="controls" label="Guest Controls" icon={ShieldAlert} />
               <NavItem id="blacklist" label="Blacklist" icon={Ban} />
               <NavItem id="account" label="Account" icon={Lock} />
             </div>
 
-            <div className="pt-4 border-t border-white/5">
+            {/* Plan Info - Hidden on mobile to save space */}
+            <div className="hidden md:block mt-auto p-4 border-t border-white/5">
                 <div className="px-4 py-3 bg-[#0e0e14] rounded-xl border border-white/5">
                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Current Plan</p>
                     <div className="flex items-center justify-between">
@@ -171,15 +181,15 @@ export default function SettingsModal({
          </div>
 
          {/* RIGHT CONTENT AREA */}
-         <div className="flex-1 flex flex-col relative bg-[#12121a]">
+         <div className="flex-1 flex flex-col relative bg-[#12121a] min-h-0">
             
-            {/* Mobile Close Button (Top Right) */}
-            <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg text-gray-400 z-10">
+            {/* Desktop Close Button */}
+            <button onClick={onClose} className="hidden md:block absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg text-gray-400 z-10">
               <X size={20} />
             </button>
 
             {/* Content Scrollable Area */}
-            <div className="flex-1 overflow-y-auto p-8">
+            <div className="flex-1 overflow-y-auto p-4 md:p-8">
                 
                 {/* Status Message Toast */}
                 {status.msg && (
@@ -243,7 +253,8 @@ export default function SettingsModal({
                                 <span>Rate Limiting</span>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-6">
+                            {/* UPDATED: Responsive Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Max Songs</label>
                                     <input 
@@ -338,7 +349,7 @@ export default function SettingsModal({
                         </div>
 
                         <div className="bg-[#1b1b2e]/50 border border-white/5 rounded-2xl overflow-hidden divide-y divide-white/5">
-                            <div className="p-6 flex items-center justify-between">
+                            <div className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                 <div className="flex items-center gap-4 text-gray-400">
                                     <div className="p-2 bg-white/5 rounded-lg"><Mail size={20} /></div>
                                     <div>
@@ -347,7 +358,7 @@ export default function SettingsModal({
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-6 flex items-center justify-between">
+                            <div className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                 <div className="flex items-center gap-4 text-gray-400">
                                     <div className="p-2 bg-white/5 rounded-lg"><Lock size={20} /></div>
                                     <div>
@@ -355,7 +366,7 @@ export default function SettingsModal({
                                         <p className="text-xs text-gray-500">Last changed recently</p>
                                     </div>
                                 </div>
-                                <button onClick={handleResetPassword} disabled={resetLoading} className="text-xs bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg border border-white/5 font-medium transition-colors">
+                                <button onClick={handleResetPassword} disabled={resetLoading} className="text-xs bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg border border-white/5 font-medium transition-colors w-full md:w-auto">
                                     {resetLoading ? "Sending..." : "Reset Password"}
                                 </button>
                             </div>
@@ -370,7 +381,7 @@ export default function SettingsModal({
                     <button 
                         onClick={handleSaveSettings} 
                         disabled={loading} 
-                        className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-900/20 transition-all flex items-center gap-2"
+                        className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-900/20 transition-all flex items-center gap-2 w-full md:w-auto justify-center"
                     >
                         {loading ? (
                             <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> Saving...</span>
