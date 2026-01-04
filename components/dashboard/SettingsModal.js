@@ -138,10 +138,10 @@ export default function SettingsModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // FIX: Reduced outer padding from p-4 to p-2 on mobile for more width
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
        <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
        
-       {/* Changed: flex-col for mobile, md:flex-row for desktop */}
        <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[600px] max-h-[90vh]">
          
          {/* LEFT SIDEBAR (Desktop) / TOP NAV (Mobile) */}
@@ -188,8 +188,8 @@ export default function SettingsModal({
               <X size={20} />
             </button>
 
-            {/* Content Scrollable Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8">
+            {/* Content Scrollable Area - Added overflow-x-hidden */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
                 
                 {/* Status Message Toast */}
                 {status.msg && (
@@ -253,7 +253,6 @@ export default function SettingsModal({
                                 <span>Rate Limiting</span>
                             </div>
                             
-                            {/* UPDATED: Responsive Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Max Songs</label>
@@ -293,15 +292,18 @@ export default function SettingsModal({
                             <p className="text-gray-500 text-sm">Block specific phone numbers from making requests.</p>
                         </div>
 
+                        {/* FIX: Mobile optimized input group */}
                         <div className="flex gap-2">
                              <input 
                                value={newBanNumber}
                                onChange={(e) => setNewBanNumber(e.target.value)}
-                               className="flex-1 bg-[#1b1b2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:border-red-500 outline-none transition-all"
-                               placeholder="Enter phone number to block..."
+                               // Added min-w-0 to prevent flex item overflow on small screens
+                               className="flex-1 min-w-0 bg-[#1b1b2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:border-red-500 outline-none transition-all"
+                               placeholder="Enter phone number..."
                              />
-                             <button onClick={handleBan} className="bg-red-500/10 text-red-400 border border-red-500/20 px-6 py-2 rounded-xl hover:bg-red-500/20 font-medium transition-colors flex items-center gap-2">
-                                 <Ban size={18} /> Block
+                             {/* Reduced padding on mobile (px-4 vs px-6) */}
+                             <button onClick={handleBan} className="bg-red-500/10 text-red-400 border border-red-500/20 px-4 md:px-6 py-2 rounded-xl hover:bg-red-500/20 font-medium transition-colors flex items-center gap-2 flex-shrink-0">
+                                 <Ban size={18} /> <span className="hidden sm:inline">Block</span> <span className="sm:hidden">Block</span>
                              </button>
                         </div>
 
@@ -319,15 +321,15 @@ export default function SettingsModal({
                                 ) : (
                                     blacklist.map((item) => (
                                         <div key={item.id} className="p-3 flex items-center justify-between group hover:bg-white/5 rounded-lg transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
                                                     <Ban size={14} className="text-red-500" />
                                                 </div>
-                                                <span className="text-gray-300 font-mono">{formatPhoneNumber(item.phone_number)}</span>
+                                                <span className="text-gray-300 font-mono truncate">{formatPhoneNumber(item.phone_number)}</span>
                                             </div>
                                             <button 
                                               onClick={() => handleUnban(item.phone_number)}
-                                              className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-green-400 transition-colors"
+                                              className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
                                               title="Unban"
                                             >
                                                 <Trash2 size={16} />
