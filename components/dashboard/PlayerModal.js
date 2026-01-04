@@ -43,6 +43,7 @@ export default function PlayerModal({
   
   const onVideoEndRef = useRef(onVideoEnd);
   
+  // Track mount status to prevent updates on unmounted component
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -58,7 +59,9 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
+  // Main Player Logic with RESILIENCE FIX
   useEffect(() => {
+    // If no video, do nothing
     if (!videoId) {
         setIsFirstSong(true);
         return;
@@ -67,6 +70,7 @@ export default function PlayerModal({
     let initTimeout;
 
     const initPlayer = () => {
+      // Retry if API isn't ready
       if (!window.YT || !window.YT.Player) {
         initTimeout = setTimeout(initPlayer, 100);
         return;
@@ -77,6 +81,7 @@ export default function PlayerModal({
           const currentData = target.getVideoData ? target.getVideoData() : null;
           const currentId = currentData ? currentData.video_id : null;
 
+          // Only load if it's actually a different video or if the player stopped
           if (currentId !== videoId) {
              setIsFirstSong(false);
              target.loadVideoById({
@@ -84,15 +89,30 @@ export default function PlayerModal({
                  startSeconds: 0
              });
              setIsPlaying(true);
+          } else {
+             // If it's the same video (re-opened), just ensure it plays
+             if (target.getPlayerState() !== window.YT.PlayerState.PLAYING) {
+                target.playVideo();
+             }
           }
         } catch (e) {
           console.error("Error loading video:", e);
         }
       };
       
-      if (playerRef.current) {
+      // Check if player instance exists AND if the iframe is actually in the DOM
+      // (Fixes the "black screen" when re-opening the same song)
+      const playerIframe = playerRef.current ? playerRef.current.getIframe() : null;
+      
+      if (playerRef.current && playerIframe && document.contains(playerIframe)) {
         loadVideoAndPlay(playerRef.current);
         return;
+      }
+
+      // If we get here, we need a fresh player instance
+      // First, safety destroy any lingering instance to prevent ghosts
+      if (playerRef.current) {
+         try { playerRef.current.destroy(); } catch(e) {}
       }
 
       playerRef.current = new window.YT.Player(PLAYER_ID, {
@@ -143,11 +163,17 @@ export default function PlayerModal({
       window.onYouTubeIframeAPIReady = initPlayer;
     }
 
+    // CLEANUP: Determines Player Resilience
     return () => {
       clearTimeout(initTimeout);
+      // NOTE: We do NOT destroy the player here if we are just minimizing. 
+      // But if the component actually unmounts (modal close), we should eventually clean up.
+      // However, for persistent audio, we usually keep the ref. 
+      // The "black screen" fix is handled by the 'document.contains' check above.
     };
   }, [videoId]); 
 
+  // Mute/Unmute Logic
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -201,37 +227,37 @@ export default function PlayerModal({
       className={`fixed z-50 transition-all duration-300 ${
         isMinimized
           ? "bottom-0 left-0 w-full pointer-events-auto" 
-          : "inset-0 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60" 
+          : "inset-0 flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm bg-black/60" 
       }`}
       onClick={!isMinimized ? onMinimize : undefined}
     >
       <div
-        className={`relative bg-[#12121a] shadow-2xl border border-white/5 overflow-hidden flex flex-col ${
+        className={`relative bg-[#12121a] shadow-2xl border-t sm:border border-white/5 overflow-hidden flex flex-col ${
           isMinimized 
             ? "h-auto rounded-t-xl rounded-b-none w-full"
-            : "w-full max-w-4xl h-auto max-h-[90vh] rounded-2xl ring-1 ring-white/10"
+            : "w-full sm:max-w-4xl h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl ring-1 ring-white/10"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* PLAYER AREA */}
         <div className={`w-full bg-black relative transition-all duration-300 ${
-            isMinimized ? "h-0 opacity-0 pointer-events-none" : "aspect-video"
+            isMinimized ? "h-0 opacity-0 pointer-events-none" : "aspect-video flex-shrink-0"
         }`}>
             <div id={PLAYER_ID} className="w-full h-full" />
         </div>
 
         {/* CONTROLS UI */}
         {!isMinimized && (
-            <div className="flex-1 flex flex-col"> 
+            <div className="flex-1 flex flex-col overflow-y-auto sm:overflow-visible"> 
               
               {/* MAIN CONTENT PADDING */}
-              <div className="p-6 pb-2">
+              <div className="p-4 sm:p-6 pb-2">
                 {/* Header Row: Title/Artist + Window Controls */}
-                <div className="flex justify-between items-start mb-4">
-                  <div className="min-w-0 pr-4">
-                    <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1 truncate leading-tight tracking-tight">{request.title}</h2> 
-                    <p className="text-lg text-gray-400 truncate font-medium">{request.artist}</p>
+                <div className="flex justify-between items-start mb-4 gap-2">
+                  <div className="min-w-0 pr-2">
+                    <h2 className="text-xl sm:text-3xl font-bold text-white mb-1 truncate leading-tight tracking-tight">{request.title}</h2> 
+                    <p className="text-md sm:text-lg text-gray-400 truncate font-medium">{request.artist}</p>
                   </div>
                   
                   {/* Window Controls */}
@@ -265,10 +291,8 @@ export default function PlayerModal({
                             {request.status}
                           </div>
 
-                          {/* Divider */}
-                          <div className="h-4 w-[1px] bg-white/10 mx-1"></div>
+                          <div className="hidden sm:block h-4 w-[1px] bg-white/10 mx-1"></div>
 
-                          {/* Tags */}
                           {tagsToDisplay.map(tag => (
                              <span key={tag} className="px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-300 border border-white/5">
                                 {tag}
@@ -279,72 +303,81 @@ export default function PlayerModal({
 
                   {/* Right: Up Next */}
                   {nextSong && (
-                    <div className="w-full sm:w-auto flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 max-w-xs">
-                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Up Next</div>
+                    <div className="w-full sm:w-auto flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 sm:max-w-xs mt-2 sm:mt-0">
+                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider shrink-0">Up Next</div>
                       <div className="text-sm text-gray-200 font-medium truncate">{nextSong.title}</div>
                     </div>
                   )}
                 </div>
               </div>
               
-              {/* CONTROL BAR (Footer) */}
-              <div className="bg-[#0e0e14] p-4 sm:px-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center mt-auto border-t border-white/5">
-                
-                {/* 1. Admin Actions (Left Aligned) */}
-                <div className="flex justify-center sm:justify-start gap-2 order-2 sm:order-1">
-                  {(request.status === 'pending') && (
-                    <>
-                      <button onClick={onApprove} className="p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors" title="Approve">
-                        <ThumbsUp size={18} />
+              {/* CONTROL BAR (Footer) - RESPONSIVE LAYOUT */}
+              <div className="bg-[#0e0e14] p-4 sm:px-6 mt-auto border-t border-white/5">
+                {/* MOBILE: Flex Column (Playback -> Settings -> Admin)
+                   DESKTOP: 3-Column Grid 
+                */}
+                <div className="flex flex-col gap-6 sm:grid sm:grid-cols-3 sm:gap-4 items-center">
+
+                    {/* 1. Playback Controls (Mobile: Top / Desktop: Center) */}
+                    {/* Order: 2 on desktop to be in middle, but 1 on mobile to be top */}
+                    <div className="flex items-center justify-center gap-6 order-1 sm:order-2 w-full sm:w-auto">
+                      <button onClick={onSkip} className="text-gray-500 hover:text-white transition-colors p-2 sm:hidden rotate-180" title="Previous (Visual only)">
+                        <SkipForward size={24} />
                       </button>
-                      <button onClick={handleReject} className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors" title="Reject">
-                        <Ban size={18} />
+                      
+                      <button 
+                        onClick={handleTogglePlay} 
+                        className="w-16 h-16 sm:w-14 sm:h-14 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-all shadow-lg shadow-white/10"
+                      >
+                        {isPlaying ? <Pause size={32} className="fill-black" /> : <Play size={32} className="fill-black ml-1" />}
                       </button>
-                    </>
-                  )}
-                  
-                  {/* Mark Played Button - Only Main Action */}
-                  <button 
-                    onClick={onMarkPlayed} 
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium transition-colors text-sm"
-                  >
-                    <Check size={16} /> <span>Mark Played</span>
-                  </button>
-                </div>
+                      
+                      <button onClick={onSkip} className="text-gray-400 hover:text-white transition-colors p-2" title="Skip">
+                        <SkipForward size={28} />
+                      </button>
+                    </div>
 
-                {/* 2. Playback Controls (Center Aligned) */}
-                <div className="flex items-center justify-center gap-6 order-1 sm:order-2">
-                   {/* Play/Pause is the Hero Button */}
-                   <button 
-                    onClick={handleTogglePlay} 
-                    className="w-14 h-14 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-all shadow-lg shadow-white/10"
-                  >
-                    {isPlaying ? <Pause size={28} className="fill-black" /> : <Play size={28} className="fill-black ml-1" />}
-                  </button>
-                  
-                   <button onClick={onSkip} className="text-gray-400 hover:text-white transition-colors p-2" title="Skip">
-                    <SkipForward size={24} />
-                  </button>
-                </div>
+                    {/* 2. Settings (Mobile: Middle / Desktop: Right) */}
+                    <div className="flex items-center justify-center sm:justify-end gap-4 order-2 sm:order-3 w-full sm:w-auto">
+                        <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "text-gray-500 hover:text-gray-300" : "text-gray-300 hover:text-white"}`}>
+                            {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                        </button>
+                        
+                        <button 
+                            onClick={onToggleAutoPlay} 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border ${
+                            autoPlay 
+                                ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' 
+                                : 'bg-transparent border-white/10 text-gray-500 hover:border-white/20'
+                            }`}
+                        >
+                            AutoPlay {autoPlay ? 'ON' : 'OFF'}
+                        </button>
+                    </div>
 
-                {/* 3. Settings (Right Aligned) */}
-                <div className="flex items-center justify-center sm:justify-end gap-3 order-3">
-                  <button onClick={onToggleMute} className={`p-2 rounded-lg transition-colors ${isMuted ? "text-gray-500 hover:text-gray-300" : "text-gray-300 hover:text-white"}`}>
-                    {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                  </button>
-                  
-                  <button 
-                    onClick={onToggleAutoPlay} 
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border ${
-                      autoPlay 
-                        ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' 
-                        : 'bg-transparent border-white/10 text-gray-500 hover:border-white/20'
-                    }`}
-                  >
-                      AutoPlay {autoPlay ? 'ON' : 'OFF'}
-                  </button>
-                </div>
+                    {/* 3. Admin Actions (Mobile: Bottom / Desktop: Left) */}
+                    <div className="flex w-full sm:w-auto gap-3 order-3 sm:order-1 sm:justify-start">
+                        {/* Mobile: Full width buttons. Desktop: Auto width */}
+                        {(request.status === 'pending') ? (
+                            <div className="grid grid-cols-2 gap-3 w-full sm:flex sm:w-auto sm:gap-2">
+                                <button onClick={onApprove} className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium transition-colors">
+                                    <ThumbsUp size={18} /> <span className="sm:hidden">Approve</span>
+                                </button>
+                                <button onClick={handleReject} className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-colors">
+                                    <Ban size={18} /> <span className="sm:hidden">Reject</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={onMarkPlayed} 
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium transition-colors text-sm"
+                            >
+                                <Check size={18} /> <span>Mark Played</span>
+                            </button>
+                        )}
+                    </div>
 
+                </div>
               </div>
             </div>
         )}
@@ -352,6 +385,7 @@ export default function PlayerModal({
         {/* Minimized Player UI */}
         {isMinimized && request && (
           <div className="flex items-center p-3 w-full bg-[#12121a] border-t border-white/10">
+            {/* ... (Same minimized code) ... */}
             <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0 group" onClick={onMaximize}>
               <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative ${isPlaying ? 'bg-gray-800' : 'bg-gray-900'}`}>
                  {request.thumbnail ? (
@@ -359,7 +393,6 @@ export default function PlayerModal({
                  ) : (
                      <Music size={20} className="text-gray-600" />
                  )}
-                 {/* Hover Overlay */}
                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <Maximize2 size={16} className="text-white" />
                  </div>
@@ -374,11 +407,9 @@ export default function PlayerModal({
                <button onClick={handleTogglePlay} className="p-2.5 bg-white text-black rounded-full hover:scale-105 transition-transform mr-2">
                 {isPlaying ? <Pause size={16} className="fill-black" /> : <Play size={16} className="fill-black ml-0.5" />} 
               </button>
-              
               <button onClick={onSkip} className="p-2 hover:bg-white/10 rounded-lg text-gray-300">
                 <SkipForward size={18} />
               </button>
-              
               <button onClick={onClose} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1">
                 <X size={18} />
               </button>
