@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { Disc3, Settings, LogOut, Trash2 } from "lucide-react";
-import { DragDropContext } from "@hello-pangea/dnd"; // NEW IMPORT
+import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
 import PlayerModal from "../components/dashboard/PlayerModal";
@@ -51,13 +51,12 @@ export default function Dashboard() {
   const [autoPlay, setAutoPlay] = useState(true);
 
   // --- Derived State ---
-  // SORTED BY POSITION
   const filteredRequests = useMemo(() => {
     let result = requests;
     if (filterStatus !== "all") {
         result = requests.filter(r => r.status === filterStatus);
     }
-    // Sort by position ascending (0, 1, 2...)
+    // Sort by position ascending
     return result.sort((a, b) => (a.position || 0) - (b.position || 0));
   }, [requests, filterStatus]);
 
@@ -124,7 +123,7 @@ export default function Dashboard() {
       .on("postgres_changes", 
         { event: "*", schema: "public", table: "requests", filter: `dj_id=eq.${user.id}` }, 
         (payload) => {
-          if (payload.eventType === "INSERT") setRequests(prev => [...prev, payload.new]); // New items append to end
+          if (payload.eventType === "INSERT") setRequests(prev => [...prev, payload.new]); 
           else if (payload.eventType === "UPDATE") setRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
           else if (payload.eventType === "DELETE") setRequests(prev => prev.filter(r => r.id !== payload.old.id));
         }
@@ -169,30 +168,28 @@ export default function Dashboard() {
     await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
   };
 
-  // --- DRAG AND DROP HANDLER ---
+  // --- DRAG AND DROP HANDLER (FIXED) ---
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
 
-    // 1. Reorder the visible list
+    // 1. Reorder the visible list in memory
     const items = Array.from(filteredRequests);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    // 2. Calculate new positions based on the new order
-    // We grab the existing position values and redistribute them to match the new visual order
-    const existingPositions = items.map(i => i.position || 0).sort((a, b) => a - b);
-    
+    // 2. FORCE NEW POSITIONS (0, 1000, 2000...)
+    // This ignores the old "duplicate" numbers and forces a clean sort order
     const updates = items.map((item, index) => ({
         id: item.id,
-        position: existingPositions[index] // Assign sorted positions to new order
+        position: index * 1000 
     }));
 
-    // 3. Optimistic Update (Global State)
+    // 3. Update Local State (Merge updates into global request list)
     setRequests(prev => {
-        const next = [...prev];
-        updates.forEach(u => {
-            const idx = next.findIndex(r => r.id === u.id);
-            if (idx !== -1) next[idx].position = u.position;
+        // Map over all requests. If the request was part of the reorder, give it the new position.
+        const next = prev.map(r => {
+            const update = updates.find(u => u.id === r.id);
+            return update ? { ...r, position: update.position } : r;
         });
         return next;
     });
@@ -345,7 +342,6 @@ export default function Dashboard() {
                 </button>
              </div>
 
-            {/* DRAG DROP CONTEXT */}
             <DragDropContext onDragEnd={handleOnDragEnd}>
                  <RequestList 
                    requests={filteredRequests}
@@ -357,7 +353,7 @@ export default function Dashboard() {
                    onDelete={handleDelete}
                    platformPreference={selectedPlatform}
                    tabLabel={TABS.find(t => t.key === filterStatus)?.label}
-                   droppableId="request-list" // Pass the ID
+                   droppableId="request-list" 
                  />
             </DragDropContext>
           </div>
