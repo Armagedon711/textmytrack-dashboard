@@ -168,7 +168,7 @@ export default function Dashboard() {
     await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
   };
 
-  // --- DRAG AND DROP HANDLER (FIXED) ---
+  // --- DRAG AND DROP HANDLER ---
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
 
@@ -178,15 +178,13 @@ export default function Dashboard() {
     items.splice(result.destination.index, 0, reorderedItem);
 
     // 2. FORCE NEW POSITIONS (0, 1000, 2000...)
-    // This ignores the old "duplicate" numbers and forces a clean sort order
     const updates = items.map((item, index) => ({
         id: item.id,
         position: index * 1000 
     }));
 
-    // 3. Update Local State (Merge updates into global request list)
+    // 3. Update Local State
     setRequests(prev => {
-        // Map over all requests. If the request was part of the reorder, give it the new position.
         const next = prev.map(r => {
             const update = updates.find(u => u.id === r.id);
             return update ? { ...r, position: update.position } : r;
@@ -270,7 +268,8 @@ export default function Dashboard() {
         onVideoEnd={handleNextSong}
       />
 
-      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-32" : ""}`}>
+      {/* UPDATED: Increased bottom padding (pb-48 if minimized, pb-24 default) to prevent overlap */}
+      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
