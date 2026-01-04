@@ -43,6 +43,15 @@ export default function PlayerModal({
   
   const onVideoEndRef = useRef(onVideoEnd);
   
+  // TRACK MOUNT STATUS: Fixes the "Autoplay stops after 2nd song" bug
+  // We use a ref so the persistent YouTube player can always check if the component is active
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+  
   useEffect(() => {
     onVideoEndRef.current = onVideoEnd;
   }, [onVideoEnd]);
@@ -59,7 +68,6 @@ export default function PlayerModal({
     }
 
     let initTimeout;
-    let isSubscribed = true;
 
     const initPlayer = () => {
       // Wait for API to be ready
@@ -76,7 +84,7 @@ export default function PlayerModal({
 
           if (currentId !== videoId) {
              setIsFirstSong(false);
-             // loadVideoById automatically plays the video; no need for stopVideo or setTimeout
+             // loadVideoById automatically plays the video
              target.loadVideoById({
                  videoId: videoId,
                  startSeconds: 0
@@ -107,7 +115,7 @@ export default function PlayerModal({
         },
         events: {
           onReady: (event) => {
-            if (isSubscribed) {
+            if (isMountedRef.current) {
               if (!isMuted) {
                 event.target.unMute();
               }
@@ -117,7 +125,8 @@ export default function PlayerModal({
             }
           },
           onStateChange: (event) => {
-            if (!isSubscribed) return;
+            // CRITICAL FIX: Check ref, not closure variable
+            if (!isMountedRef.current) return;
             
             if (event.data === window.YT.PlayerState.ENDED) {
               onVideoEndRef.current?.();
@@ -129,7 +138,7 @@ export default function PlayerModal({
           },
           onError: (e) => {
             console.error("Player Error:", e);
-            if (isSubscribed) {
+            if (isMountedRef.current) {
               setTimeout(() => onVideoEndRef.current?.(), 2000);
             }
           }
@@ -144,7 +153,6 @@ export default function PlayerModal({
     }
 
     return () => {
-      isSubscribed = false;
       clearTimeout(initTimeout);
     };
   }, [videoId]); 
