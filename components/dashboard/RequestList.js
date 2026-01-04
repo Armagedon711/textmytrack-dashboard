@@ -1,5 +1,6 @@
 import { ListMusic } from "lucide-react";
 import RequestItem from "./RequestItem";
+import { Droppable } from "@hello-pangea/dnd"; // NEW IMPORT
 
 export default function RequestList({ 
   requests, 
@@ -10,7 +11,8 @@ export default function RequestList({
   onUpdateStatus,
   onDelete,
   platformPreference,
-  tabLabel
+  tabLabel,
+  droppableId // New Prop
 }) {
   if (loading) {
     return (
@@ -38,34 +40,39 @@ export default function RequestList({
   }
 
   return (
-    <div className="space-y-2 sm:space-y-3">
-      {requests.map((req, index) => {
-        
-        // 1. Determine if a play button is justified based on the selected platform
-        let hasExternalUrlForSelectedPlatform = false;
-        if (platformPreference === 'youtube') hasExternalUrlForSelectedPlatform = req.youtube_video_id || req.url;
-        else if (platformPreference === 'spotify') hasExternalUrlForSelectedPlatform = req.spotify_url;
-        else if (platformPreference === 'apple') hasExternalUrlForSelectedPlatform = req.apple_url;
-        else if (platformPreference === 'soundcloud') hasExternalUrlForSelectedPlatform = req.soundcloud_url;
-        
-        // 2. The flag that tells handlePlayRequest whether to open the internal modal or external tab
-        // CRITICAL FIX: The internal player is only used if YouTube is the preference AND the YouTube ID exists.
-        const shouldUseInternalPlayer = platformPreference === 'youtube' && !!req.youtube_video_id; 
+    <Droppable droppableId={droppableId || "list"}>
+      {(provided) => (
+        <div 
+           className="space-y-2 sm:space-y-3"
+           ref={provided.innerRef}
+           {...provided.droppableProps}
+        >
+          {requests.map((req, index) => {
+            
+            let hasExternalUrlForSelectedPlatform = false;
+            if (platformPreference === 'youtube') hasExternalUrlForSelectedPlatform = req.youtube_video_id || req.url;
+            else if (platformPreference === 'spotify') hasExternalUrlForSelectedPlatform = req.spotify_url;
+            else if (platformPreference === 'apple') hasExternalUrlForSelectedPlatform = req.apple_url;
+            else if (platformPreference === 'soundcloud') hasExternalUrlForSelectedPlatform = req.soundcloud_url;
+            
+            const shouldUseInternalPlayer = platformPreference === 'youtube' && !!req.youtube_video_id; 
 
-        return (
-          <RequestItem
-            key={req.id}
-            req={req}
-            index={index}
-            isCurrentlyPlaying={currentPlayingId === req.id}
-            // The button should appear if the internal player can be used OR if an external URL is available for the preferred platform
-            hasUrl={shouldUseInternalPlayer || hasExternalUrlForSelectedPlatform}
-            onPlay={(r) => onPlay(r, shouldUseInternalPlayer)} // Pass the correct flag to page.js's handlePlayRequest
-            onUpdateStatus={onUpdateStatus}
-            onDelete={onDelete}
-          />
-        );
-      })}
-    </div>
+            return (
+              <RequestItem
+                key={req.id}
+                req={req}
+                index={index}
+                isCurrentlyPlaying={currentPlayingId === req.id}
+                hasUrl={shouldUseInternalPlayer || hasExternalUrlForSelectedPlatform}
+                onPlay={(r) => onPlay(r, shouldUseInternalPlayer)}
+                onUpdateStatus={onUpdateStatus}
+                onDelete={onDelete}
+              />
+            );
+          })}
+          {provided.placeholder}
+        </div>
+      )}
+    </Droppable>
   );
 }

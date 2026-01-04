@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { Disc3, Settings, LogOut, Trash2 } from "lucide-react";
+import { DragDropContext } from "@hello-pangea/dnd"; // NEW IMPORT
 
 // Components
 import PlayerModal from "../components/dashboard/PlayerModal";
@@ -13,7 +14,6 @@ import SettingsModal from "../components/dashboard/SettingsModal";
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
-// FIX: Replace broken unicode icons (Issue #3) with standard emojis and update icon choices
 const PLATFORMS = {
   youtube: { name: "YouTube", icon: "▶️", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
   spotify: { name: "Spotify", icon: "🟢", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
@@ -44,16 +44,21 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
 
   // Player State
-  const [videoModalId, setVideoModalId] = useState(null); // The Video ID currently in modal
-  const [playingRequestId, setPlayingRequestId] = useState(null); // The Request ID
+  const [videoModalId, setVideoModalId] = useState(null); 
+  const [playingRequestId, setPlayingRequestId] = useState(null); 
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [autoPlay, setAutoPlay] = useState(true);
 
   // --- Derived State ---
+  // SORTED BY POSITION
   const filteredRequests = useMemo(() => {
-    if (filterStatus === "all") return requests;
-    return requests.filter(r => r.status === filterStatus);
+    let result = requests;
+    if (filterStatus !== "all") {
+        result = requests.filter(r => r.status === filterStatus);
+    }
+    // Sort by position ascending (0, 1, 2...)
+    return result.sort((a, b) => (a.position || 0) - (b.position || 0));
   }, [requests, filterStatus]);
 
   const stats = useMemo(() => ({
@@ -70,8 +75,9 @@ export default function Dashboard() {
 
   const nextSong = useMemo(() => {
     if (!currentPlayingRequest) return null;
-    // Look for next approved or pending song with a video ID
-    const queue = requests.filter(r => (r.status === 'pending' || r.status === 'approved') && r.youtube_video_id);
+    const queue = requests
+        .filter(r => (r.status === 'pending' || r.status === 'approved') && r.youtube_video_id)
+        .sort((a, b) => (a.position || 0) - (b.position || 0));
     const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
     return queue[currentIndex + 1] || null;
   }, [requests, currentPlayingRequest]);
@@ -92,14 +98,17 @@ export default function Dashboard() {
         if (profile.preferred_platform) setSelectedPlatform(profile.preferred_platform);
       }
 
-      // Load Requests (Initial)
-      const reqs = await fetch(`/api/requests?dj_id=${data.user.id}`).then(res => res.json());
+      // Load Requests (Initial) - ORDER BY POSITION
+      const { data: reqs, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('dj_id', data.user.id)
+        .order('position', { ascending: true });
       
-      if (reqs && reqs.requests) {
-         setRequests(reqs.requests);
+      if (reqs) {
+         setRequests(reqs);
       } else {
-         console.error("Failed to load initial requests from API:", reqs);
-         setRequests([]);
+         console.error("Failed to load requests:", error);
       }
       
       setLoading(false);
@@ -108,14 +117,14 @@ export default function Dashboard() {
   }, []);
 
 
-  // --- Realtime Subscription (Optimized) ---
+  // --- Realtime Subscription ---
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel("realtime-requests")
       .on("postgres_changes", 
         { event: "*", schema: "public", table: "requests", filter: `dj_id=eq.${user.id}` }, 
         (payload) => {
-          if (payload.eventType === "INSERT") setRequests(prev => [payload.new, ...prev]);
+          if (payload.eventType === "INSERT") setRequests(prev => [...prev, payload.new]); // New items append to end
           else if (payload.eventType === "UPDATE") setRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
           else if (payload.eventType === "DELETE") setRequests(prev => prev.filter(r => r.id !== payload.old.id));
         }
@@ -127,10 +136,8 @@ export default function Dashboard() {
 
   // --- Actions ---
   const handleUpdateStatus = async (id, status) => {
-    // Optimistic Update
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    // NOTE: Using /api/update-request for a POST request to update status
-    await fetch("/api/update-request", { // Changed to use update-request endpoint
+    await fetch("/api/update-request", { 
        method: "POST", headers: { "Content-Type": "application/json" },
        body: JSON.stringify({ id, status })
     });
@@ -149,7 +156,6 @@ export default function Dashboard() {
     if(!confirm(`Delete all ${filteredRequests.length} items?`)) return;
     const ids = filteredRequests.map(r => r.id);
     setRequests(prev => prev.filter(r => !ids.includes(r.id)));
-    // In production, use a batch delete endpoint
     ids.forEach(id => fetch("/api/requests-delete", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id })
@@ -163,6 +169,39 @@ export default function Dashboard() {
     await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
   };
 
+  // --- DRAG AND DROP HANDLER ---
+  const handleOnDragEnd = async (result) => {
+    if (!result.destination) return;
+
+    // 1. Reorder the visible list
+    const items = Array.from(filteredRequests);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    // 2. Calculate new positions based on the new order
+    // We grab the existing position values and redistribute them to match the new visual order
+    const existingPositions = items.map(i => i.position || 0).sort((a, b) => a - b);
+    
+    const updates = items.map((item, index) => ({
+        id: item.id,
+        position: existingPositions[index] // Assign sorted positions to new order
+    }));
+
+    // 3. Optimistic Update (Global State)
+    setRequests(prev => {
+        const next = [...prev];
+        updates.forEach(u => {
+            const idx = next.findIndex(r => r.id === u.id);
+            if (idx !== -1) next[idx].position = u.position;
+        });
+        return next;
+    });
+
+    // 4. Persist to DB
+    const { error } = await supabase.from('requests').upsert(updates);
+    if (error) console.error("Reorder failed", error);
+  };
+
   // --- Player Logic ---
   const handlePlayRequest = (req, isInternalPlayer) => {
     if(isInternalPlayer && req.youtube_video_id) {
@@ -170,17 +209,11 @@ export default function Dashboard() {
        setPlayingRequestId(req.id);
        setIsMinimized(false);
     } else {
-       // Open External - FIX: Correctly determine external URL based on selectedPlatform
        let url = null;
-       if (selectedPlatform === 'spotify' && req.spotify_url) {
-           url = req.spotify_url;
-       } else if (selectedPlatform === 'apple' && req.apple_url) {
-           url = req.apple_url;
-       } else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) {
-           url = req.soundcloud_url;
-       } else if (req.url) { // Fallback to generic URL if it exists
-           url = req.url;
-       }
+       if (selectedPlatform === 'spotify' && req.spotify_url) url = req.spotify_url;
+       else if (selectedPlatform === 'apple' && req.apple_url) url = req.apple_url;
+       else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) url = req.soundcloud_url;
+       else if (req.url) url = req.url;
        
        if(url) window.open(url, '_blank');
     }
@@ -188,16 +221,12 @@ export default function Dashboard() {
 
   const handleNextSong = useCallback(() => {
     if (autoPlay && nextSong) {
-      // Mark current played
       if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
-      
-      // Play next (small delay to reset player)
       setTimeout(() => {
         setPlayingRequestId(nextSong.id);
         setVideoModalId(nextSong.youtube_video_id);
       }, 100);
     } else {
-       // Stop
        setVideoModalId(null);
        setPlayingRequestId(null);
     }
@@ -205,17 +234,12 @@ export default function Dashboard() {
 
 
   return (
-    // REVERTED FIX: Removed overflow-y-scroll to fix double scrollbar issue
     <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
-      {/* ENHANCED BACKGROUND: Increased size, blur, and opacity for a more pronounced glass morphism effect */}
       <div className="fixed inset-0 pointer-events-none">
-        {/* Top-Left Glow (Purple/Cyan Hue) */}
         <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
-        {/* Bottom-Right Glow (Pink/Red Hue) */}
         <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
       </div>
 
-      {/* Settings Modal */}
       <SettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)}
@@ -224,7 +248,6 @@ export default function Dashboard() {
         universalNumber={UNIVERSAL_NUMBER}
       />
 
-      {/* Persistent Player */}
       <PlayerModal 
         videoId={videoModalId}
         request={currentPlayingRequest}
@@ -237,7 +260,7 @@ export default function Dashboard() {
         onMaximize={() => setIsMinimized(false)}
         onToggleMute={() => setIsMuted(!isMuted)}
         onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
-        onTogglePlay={() => {}} // Internal state handled in component
+        onTogglePlay={() => {}} 
         onSkip={handleNextSong}
         onApprove={() => {
             if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "approved");
@@ -251,8 +274,6 @@ export default function Dashboard() {
       />
 
       <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-32" : ""}`}>
-        
-        {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
@@ -274,7 +295,6 @@ export default function Dashboard() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar */}
           <div className="hidden lg:block lg:col-span-1">
              <StatsSidebar 
                stats={stats}
@@ -288,9 +308,7 @@ export default function Dashboard() {
              />
           </div>
 
-          {/* Mobile Sidebar Replacement (simplified) */}
           <div className="lg:hidden mb-4">
-             {/* Render simplified mobile stats here if needed, or rely on StatsSidebar adapting to mobile (it currently has desktop styles) */}
              <div className="p-4 bg-[#12121a] rounded-xl border border-white/5 flex justify-between items-center">
                 <span className="text-sm text-gray-400">Status</span>
                 <button onClick={toggleAccepting} className={`text-xs px-2 py-1 rounded ${djProfile?.accepting_requests ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
@@ -299,9 +317,7 @@ export default function Dashboard() {
              </div>
           </div>
 
-          {/* Main List */}
           <div className="lg:col-span-3">
-             {/* Tabs */}
              <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
                 {TABS.map(tab => (
                   <button 
@@ -309,7 +325,6 @@ export default function Dashboard() {
                     onClick={() => setFilterStatus(tab.key)}
                     className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
                       filterStatus === tab.key 
-                      // FIX: Set background color for all tabs
                       ? "bg-white/10 border-white/20 text-white" 
                       : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
                     }`}
@@ -317,31 +332,34 @@ export default function Dashboard() {
                     {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
                   </button>
                 ))}
-                {/* FIX: Jitter fix: Always render the clear button space but hide content if no requests */}
                 <button 
                   onClick={clearAllFiltered} 
                   disabled={filteredRequests.length === 0}
                   className={`ml-auto px-3 py-2 rounded-lg transition-colors ${
                     filteredRequests.length > 0 
                       ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' 
-                      : 'bg-transparent text-transparent pointer-events-none' // Hide but reserve space
+                      : 'bg-transparent text-transparent pointer-events-none' 
                   }`}
                 >
                   <Trash2 size={16} />
                 </button>
              </div>
 
-             <RequestList 
-               requests={filteredRequests}
-               loading={loading}
-               filterStatus={filterStatus}
-               currentPlayingId={playingRequestId}
-               onPlay={handlePlayRequest}
-               onUpdateStatus={handleUpdateStatus}
-               onDelete={handleDelete}
-               platformPreference={selectedPlatform}
-               tabLabel={TABS.find(t => t.key === filterStatus)?.label}
-             />
+            {/* DRAG DROP CONTEXT */}
+            <DragDropContext onDragEnd={handleOnDragEnd}>
+                 <RequestList 
+                   requests={filteredRequests}
+                   loading={loading}
+                   filterStatus={filterStatus}
+                   currentPlayingId={playingRequestId}
+                   onPlay={handlePlayRequest}
+                   onUpdateStatus={handleUpdateStatus}
+                   onDelete={handleDelete}
+                   platformPreference={selectedPlatform}
+                   tabLabel={TABS.find(t => t.key === filterStatus)?.label}
+                   droppableId="request-list" // Pass the ID
+                 />
+            </DragDropContext>
           </div>
         </div>
       </div>
