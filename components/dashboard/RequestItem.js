@@ -82,7 +82,8 @@ export default function RequestItem({
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
               : isCurrentlyPlaying 
                 ? "bg-pink-500/5 border-pink-500/30" 
-                : "bg-[#12121a] border-white/5 hover:border-white/10"
+                : "bg-[#181824] md:bg-[#12121a] border-white/10 md:border-white/5 hover:border-white/10" 
+                // ^ UPDATED: Lighter bg (#181824) and stronger border (white/10) on mobile
           }`}
           style={provided.draggableProps.style}
         >
