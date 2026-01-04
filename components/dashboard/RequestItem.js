@@ -48,7 +48,7 @@ export default function RequestItem({
       );
   };
 
-  // Shared Tags Component to avoid duplication
+  // Shared Tags Component
   const TagsRow = ({ className }) => (
     <div className={`flex-wrap items-center gap-1.5 ${className}`}>
         {req.explicit === "Explicit" && (
@@ -130,6 +130,7 @@ export default function RequestItem({
                   {/* Header: Title + Status Badge */}
                   <div className="flex justify-between items-start gap-2">
                       <div className="min-w-0 flex-1">
+                        {/* Title */}
                         {hasUrl ? (
                             <button onClick={() => onPlay(req)} className="text-left group/title w-full">
                               <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors truncate">
@@ -139,7 +140,27 @@ export default function RequestItem({
                           ) : (
                             <h3 className="font-bold text-white text-sm sm:text-base leading-tight truncate">{req.title}</h3>
                           )}
-                          <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">{req.artist}</p>
+                          
+                          {/* Artist + Desktop User Info */}
+                          <div className="flex items-center gap-2 overflow-hidden">
+                             <p className="text-xs sm:text-sm text-gray-300 font-medium truncate flex-shrink-0 max-w-[50%] sm:max-w-none">{req.artist}</p>
+                             
+                             {/* DESKTOP ONLY: Inline User Info */}
+                             <div className="hidden sm:flex items-center gap-2 text-[10px] text-gray-500 font-mono whitespace-nowrap">
+                                <span className="text-gray-700">•</span>
+                                <div className="flex items-center gap-1">
+                                    <User size={10} />
+                                    <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors">
+                                      {req.requestedBy}
+                                    </button>
+                                </div>
+                                <span className="text-gray-700">•</span>
+                                <div className="flex items-center gap-1">
+                                    <Clock size={10} />
+                                    <span>{timeAgo(req.requestedAt)}</span>
+                                </div>
+                             </div>
+                          </div>
                       </div>
 
                       {/* Status Badge */}
@@ -154,8 +175,8 @@ export default function RequestItem({
                       </span>
                   </div>
 
-                  {/* User Info Row */}
-                  <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-1 rounded-md w-fit max-w-full">
+                  {/* MOBILE ONLY: User Info Row */}
+                  <div className="sm:hidden flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-1 rounded-md w-fit max-w-full">
                     <div className="flex items-center gap-1 min-w-0">
                         <User size={10} className="shrink-0"/>
                         <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors truncate">
