@@ -44,7 +44,6 @@ export default function PlayerModal({
   const onVideoEndRef = useRef(onVideoEnd);
   
   // TRACK MOUNT STATUS: Fixes the "Autoplay stops after 2nd song" bug
-  // We use a ref so the persistent YouTube player can always check if the component is active
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -78,13 +77,11 @@ export default function PlayerModal({
       
       const loadVideoAndPlay = (target) => {
         try {
-          // Check if we are actually changing songs to avoid reloading the same one
           const currentData = target.getVideoData ? target.getVideoData() : null;
           const currentId = currentData ? currentData.video_id : null;
 
           if (currentId !== videoId) {
              setIsFirstSong(false);
-             // loadVideoById automatically plays the video
              target.loadVideoById({
                  videoId: videoId,
                  startSeconds: 0
@@ -125,7 +122,6 @@ export default function PlayerModal({
             }
           },
           onStateChange: (event) => {
-            // CRITICAL FIX: Check ref, not closure variable
             if (!isMountedRef.current) return;
             
             if (event.data === window.YT.PlayerState.ENDED) {
@@ -221,7 +217,7 @@ export default function PlayerModal({
           aspectRatio: '16/9',
           top: '50%',
           left: '50%',
-          // Adjusted offset to 86px to better align with the tighter controls layout
+          // Adjusted offset to 86px to better align with the h-auto layout
           transform: 'translateX(-50%) translateY(calc(-50% - 86px))', 
         } : undefined}
       >
@@ -245,7 +241,7 @@ export default function PlayerModal({
           className={`relative bg-[#12121a] shadow-2xl border border-white/5 ${
             isMinimized 
               ? "h-auto rounded-t-xl rounded-b-none w-full"
-              : "w-full max-w-4xl h-full max-h-[90vh] rounded-xl"
+              : "w-full max-w-4xl h-auto max-h-[90vh] rounded-xl"
           }`}
           // Stop propagation so clicks inside the modal don't minimize it
           onClick={(e) => e.stopPropagation()}
@@ -265,7 +261,7 @@ export default function PlayerModal({
               </div>
 
               {/* Controls and Info */}
-              <div className="flex-1 p-4 flex flex-col justify-between"> 
+              <div className="flex-1 p-4 flex flex-col"> 
                 
                 {/* Top Section of Controls: Title, Artist, Min/Close Buttons */}
                 <div className="flex justify-between items-start mb-1">
@@ -320,7 +316,7 @@ export default function PlayerModal({
                 </div>
                 
                 {/* Bottom Row: Actions (Left) and Playback (Right) */}
-                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pt-4 border-t border-white/5">
+                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pt-4 border-t border-white/5 mt-auto">
                   
                   {/* Left: Actions (Contextual Display) */}
                   <div className="flex gap-3 w-full sm:w-auto order-2 sm:order-1 justify-center">
