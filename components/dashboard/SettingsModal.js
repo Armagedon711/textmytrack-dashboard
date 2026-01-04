@@ -64,17 +64,23 @@ export default function SettingsModal({
 
     setLoading(true);
     try {
-      // Save all settings to dj_profiles
-      const { error } = await supabase
-        .from('dj_profiles')
-        .update({ 
+      // FIX: Use the API route instead of direct Supabase update to avoid RLS/Permission errors
+      const res = await fetch("/api/dj-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            dj_id: user.id, 
             tag: tag.trim(),
             request_limit_count: parseInt(limitCount),
             request_limit_hours: parseInt(limitHours)
-        })
-        .eq('dj_id', user.id);
+        }),
+      });
 
-      if (error) throw error;
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to update settings");
+      }
       
       setStatus({ type: "success", msg: "Settings saved successfully!" });
       
@@ -82,7 +88,7 @@ export default function SettingsModal({
 
     } catch (e) { 
         console.error(e);
-        setStatus({ type: "error", msg: "Failed to update settings" }); 
+        setStatus({ type: "error", msg: e.message || "Failed to update settings" }); 
     } 
     finally { setLoading(false); }
   };
