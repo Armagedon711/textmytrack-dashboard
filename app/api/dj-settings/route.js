@@ -17,20 +17,11 @@ if (
 
 /**
  * Extract DJ tag from message body
- * Handles formats like:
- * - "DJ Joey can you play..."
- * - "dj james play..."
- * - "Hey DJ Joey, play..."
- * - "DJ Joey Blinding Lights"
- * - "DJ Joey"
  */
 function extractDJTag(message) {
   if (!message || typeof message !== 'string') return null;
   
-  // Clean the message
   const cleanMessage = message.trim();
-  
-  // Words that indicate the DJ name has ended and a request/action is starting
   const stopWords = [
     'can', 'could', 'would', 'will', 'please', 'play', 'put', 'drop',
     'spin', 'throw', 'queue', 'add', 'request', 'i', 'we', 'do', 'you',
@@ -38,54 +29,35 @@ function extractDJTag(message) {
     'track', 'music', 'some', 'any', 'the', 'a', 'an', 'this', 'that'
   ];
   
-  // First, find "DJ" followed by words
   const djMatch = cleanMessage.match(/\b(dj\s+\S+(?:\s+\S+)*)/i);
-  
   if (!djMatch) return null;
   
-  // Split the matched portion into words
   const words = djMatch[1].split(/\s+/);
-  
-  // Build the DJ tag by taking words until we hit a stop word
-  const tagWords = [words[0]]; // Always include "DJ"
+  const tagWords = [words[0]]; 
   
   for (let i = 1; i < words.length; i++) {
     const word = words[i].toLowerCase().replace(/[^a-z]/g, '');
-    
-    // Stop if we hit a stop word
-    if (stopWords.includes(word)) {
-      break;
-    }
-    
-    // Stop if it looks like a song title (contains numbers or special patterns)
-    // But allow simple names like "Joey2" or "DJ Mike"
-    if (i > 2) {
-      break; // DJ names are typically 1-2 words after "DJ"
-    }
-    
+    if (stopWords.includes(word)) break;
+    if (i > 2) break;
     tagWords.push(words[i]);
   }
   
-  // Must have at least "DJ [Name]"
   if (tagWords.length < 2) return null;
-  
-  // Clean and return
   const tag = tagWords.join(' ').replace(/[,.:!?]+$/, '').trim();
-  
   console.log("Extracted DJ tag:", tag, "from message:", cleanMessage);
-  
   return tag;
 }
 
 /**
  * Find DJ by tag (case-insensitive)
+ * UPDATED: Now fetches request limit settings
  */
 async function findDJByTag(tag) {
   if (!tag) return null;
   
   const { data, error } = await supabaseAdmin
     .from("dj_profiles")
-    .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
+    .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
     .ilike("tag", tag)
     .maybeSingle();
   
@@ -99,21 +71,21 @@ async function findDJByTag(tag) {
 
 /**
  * Find DJ by phone number (tries multiple formats)
+ * UPDATED: Now fetches request limit settings
  */
 async function findDJByPhone(phone) {
   if (!phone) return null;
   
-  // Try multiple phone formats
   const digitsOnly = phone.replace(/\D/g, '');
   const last10 = digitsOnly.slice(-10);
   
   const phoneVariants = [
-    phone,                          // Original: +18557104644
-    digitsOnly,                     // 18557104644
-    '+' + digitsOnly,               // +18557104644
-    '+1' + last10,                  // +18557104644
-    last10,                         // 8557104644
-    '1' + last10,                   // 18557104644
+    phone,
+    digitsOnly,
+    '+' + digitsOnly,
+    '+1' + last10,
+    last10,
+    '1' + last10,
   ];
 
   console.log("findDJByPhone - searching for variants:", phoneVariants);
@@ -122,18 +94,13 @@ async function findDJByPhone(phone) {
   for (const variant of phoneVariants) {
     if (!variant) continue;
     
-    console.log("Trying exact match for:", variant);
-    
     const { data, error } = await supabaseAdmin
       .from("dj_profiles")
-      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
+      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
       .eq("twilio_number", variant)
       .maybeSingle();
 
-    if (error) {
-      console.error("Error searching for variant", variant, ":", error);
-    }
-
+    if (error) console.error("Error searching for variant", variant, ":", error);
     if (data) {
       console.log("Found DJ with exact match:", variant, "->", data.id);
       return data;
@@ -146,7 +113,7 @@ async function findDJByPhone(phone) {
     
     const { data, error } = await supabaseAdmin
       .from("dj_profiles")
-      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests")
+      .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
       .like("twilio_number", `%${last10}`)
       .maybeSingle();
 
@@ -190,7 +157,7 @@ async function findAllDJsOnNumber(phone) {
   return [];
 }
 
-// Universal number - Trial and Pro users share this
+// Universal number
 const UNIVERSAL_NUMBER = "+18557105533";
 
 export async function GET(request) {
@@ -216,7 +183,6 @@ export async function GET(request) {
       );
     }
 
-    // Normalize phone number for comparison
     const normalizedPhone = '+' + phone.replace(/\D/g, '');
     const isUniversalNumber = normalizedPhone === UNIVERSAL_NUMBER || 
                               phone === UNIVERSAL_NUMBER ||
@@ -229,7 +195,7 @@ export async function GET(request) {
     let extractedTag = null;
 
     // =============================================================
-    // DEDICATED NUMBER (Headliner) - Skip tag system entirely
+    // DEDICATED NUMBER (Headliner)
     // =============================================================
     if (!isUniversalNumber) {
       console.log("Dedicated number detected - bypassing tag system");
@@ -247,10 +213,11 @@ export async function GET(request) {
           tag: djProfile.tag,
           plan: djProfile.plan,
           match_method: matchMethod,
-          accepting_requests: djProfile.accepting_requests !== false // default to true
+          accepting_requests: djProfile.accepting_requests !== false,
+          request_limit_count: djProfile.request_limit_count || 5,  // ADDED
+          request_limit_hours: djProfile.request_limit_hours || 1   // ADDED
         });
       } else {
-        // Dedicated number not found in database
         return NextResponse.json({
           dj_id: null,
           preferred_platform: "youtube",
@@ -262,11 +229,10 @@ export async function GET(request) {
     }
 
     // =============================================================
-    // UNIVERSAL NUMBER - Use tag system
+    // UNIVERSAL NUMBER
     // =============================================================
     console.log("Universal number - using tag system");
 
-    // STEP 1: Try to extract and match DJ tag from message
     if (message) {
       extractedTag = extractDJTag(message);
       console.log("Extracted DJ Tag:", extractedTag);
@@ -280,7 +246,6 @@ export async function GET(request) {
       }
     }
 
-    // STEP 2: If no tag match, return error with available tags
     if (!djProfile) {
       const allDJsOnNumber = await findAllDJsOnNumber(phone);
       
@@ -306,7 +271,7 @@ export async function GET(request) {
     }
 
     // =============================================================
-    // STEP 3: Return result
+    // RETURN RESULT
     // =============================================================
     if (!djProfile) {
       return NextResponse.json({
@@ -324,7 +289,9 @@ export async function GET(request) {
       plan: djProfile.plan,
       match_method: matchMethod,
       extracted_tag: extractedTag,
-      accepting_requests: djProfile.accepting_requests !== false // default to true
+      accepting_requests: djProfile.accepting_requests !== false,
+      request_limit_count: djProfile.request_limit_count || 5,  // ADDED
+      request_limit_hours: djProfile.request_limit_hours || 1   // ADDED
     });
 
   } catch (err) {
