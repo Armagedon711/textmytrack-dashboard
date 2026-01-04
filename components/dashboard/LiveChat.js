@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { MessageSquare, User, Bot, Loader2, Ban } from "lucide-react";
 
-export default function LiveChat({ djId }) {
+export default function LiveChat({ 
+  djId, 
+  showHeader = true, 
+  className = "h-[400px]" // Default height for Desktop (StatsSidebar)
+}) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const supabase = supabaseBrowserClient();
@@ -73,14 +77,18 @@ export default function LiveChat({ djId }) {
   };
 
   return (
-    <div className="flex flex-col h-[400px] bg-[#12121a] border border-white/5 rounded-2xl overflow-hidden mt-6">
-      {/* Header */}
-      <div className="p-4 border-b border-white/5 flex items-center gap-2 bg-[#16161f]">
-        <div className="p-1.5 rounded-lg bg-green-500/20 text-green-400">
-          <MessageSquare size={16} />
+    // UPDATED: Uses className prop for height/margin flexibility
+    <div className={`flex flex-col bg-[#12121a] border border-white/5 rounded-2xl overflow-hidden mt-6 ${className}`}>
+      
+      {/* Header - Conditionally Rendered */}
+      {showHeader && (
+        <div className="p-4 border-b border-white/5 flex items-center gap-2 bg-[#16161f]">
+          <div className="p-1.5 rounded-lg bg-green-500/20 text-green-400">
+            <MessageSquare size={16} />
+          </div>
+          <h3 className="text-sm font-bold text-white">Live Text Feed</h3>
         </div>
-        <h3 className="text-sm font-bold text-white">Live Text Feed</h3>
-      </div>
+      )}
 
       {/* Chat Area - Custom Scrollbar */}
       <div 

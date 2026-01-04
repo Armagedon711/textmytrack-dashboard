@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, ExternalLink, Power } from "lucide-react"; // Added Icons
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
@@ -11,7 +11,7 @@ import PlayerModal from "../components/dashboard/PlayerModal";
 import RequestList from "../components/dashboard/RequestList";
 import StatsSidebar from "../components/dashboard/StatsSidebar";
 import SettingsModal from "../components/dashboard/SettingsModal";
-import LiveChat from "../components/dashboard/LiveChat"; // Added Import
+import LiveChat from "../components/dashboard/LiveChat"; 
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
@@ -43,7 +43,7 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
-  const [isChatExpanded, setIsChatExpanded] = useState(false); // Mobile Chat State
+  const [isChatExpanded, setIsChatExpanded] = useState(false); 
 
   // Player State
   const [videoModalId, setVideoModalId] = useState(null); 
@@ -58,7 +58,6 @@ export default function Dashboard() {
     if (filterStatus !== "all") {
         result = requests.filter(r => r.status === filterStatus);
     }
-    // Sort by position ascending
     return result.sort((a, b) => (a.position || 0) - (b.position || 0));
   }, [requests, filterStatus]);
 
@@ -345,7 +344,7 @@ export default function Dashboard() {
                       ))}
                    </select>
                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <ExternalLink size={12} className="text-gray-500" />
+                      <ChevronDown size={14} className="text-gray-500" />
                    </div>
                 </div>
              </div>
@@ -367,7 +366,13 @@ export default function Dashboard() {
                 
                 {isChatExpanded && (
                    <div className="border-t border-white/5 h-[350px]">
-                      {djProfile?.id && <LiveChat djId={djProfile.id} />}
+                      {djProfile?.id && (
+                        <LiveChat 
+                          djId={djProfile.id} 
+                          showHeader={false} 
+                          className="h-full mt-0 rounded-none border-0" 
+                        />
+                      )}
                    </div>
                 )}
              </div>
