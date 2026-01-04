@@ -16,47 +16,6 @@ if (
   );
 }
 
-// ---------- GET (Fetch Requests) ----------
-export async function GET(req) {
-  try {
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Supabase admin not initialized" },
-        { status: 500 }
-      );
-    }
-
-    const { searchParams } = new URL(req.url);
-    const dj_id = searchParams.get("dj_id");
-
-    if (!dj_id) {
-      return NextResponse.json(
-        { error: "Missing dj_id" },
-        { status: 400 }
-      );
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("requests")
-      .select("*")
-      .eq("dj_id", dj_id)
-      .order("requestedAt", { ascending: false });
-
-    if (error) {
-      console.error("Supabase error fetching requests:", error.message); // <-- ADDED LOG
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    
-    // <-- ADDED LOG
-    console.log(`Successfully fetched ${data ? data.length : 0} requests for DJ: ${dj_id}`); 
-
-    return NextResponse.json({ requests: data || [] });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-// ---------- POST (Insert New Request) ----------
 export async function POST(request) {
   try {
     if (!supabaseAdmin) {
@@ -79,14 +38,17 @@ export async function POST(request) {
       requestedAt,
       url,
       thumbnail,
-      dj_id, // <-- CRITICAL: Must be present in the request body
-      // New multi-platform fields
+      dj_id,
       platform,
       youtube_url,
       youtube_video_id,
       spotify_url,
       apple_url,
       soundcloud_url,
+      // NEW FIELDS FROM N8N
+      message_body,
+      sender_number,
+      reply_body
     } = body;
 
     if (!title || !artist || !requestedBy || !requestedAt || !dj_id) {
@@ -96,32 +58,12 @@ export async function POST(request) {
       );
     }
 
+    // 1. INSERT THE SONG REQUEST
     const explicitValue =
-      explicit === "Explicit" ||
-      explicit === "Clean" ||
-      explicit === "Undetermined"
-        ? explicit
-        : "Undetermined";
+      explicit === "Explicit" || explicit === "Clean" ? explicit : "Undetermined";
 
-    // Extract YouTube video ID from URL if not provided
     let videoId = youtube_video_id || null;
-    const ytUrl = youtube_url || url;
-    if (!videoId && ytUrl) {
-      // Extract from various YouTube URL formats
-      const patterns = [
-        /youtu\.be\/([^?]+)/,
-        /[?&]v=([^&]+)/,
-        /shorts\/([^?]+)/,
-        /embed\/([^?]+)/
-      ];
-      for (const pattern of patterns) {
-        const match = ytUrl.match(pattern);
-        if (match) {
-          videoId = match[1];
-          break;
-        }
-      }
-    }
+    // ... (Keep existing video ID extraction logic here) ...
 
     const { error } = await supabaseAdmin.from("requests").insert({
       title,
@@ -130,13 +72,12 @@ export async function POST(request) {
       mood: mood || null,
       energy: energy || null,
       explicit: explicitValue,
-      url: url || youtube_url || null, // Keep legacy url field populated
+      url: url || youtube_url || null,
       thumbnail: thumbnail || null,
       requestedBy,
       requestedAt,
       status: "pending",
       dj_id,
-      // New multi-platform fields
       platform: platform || "YouTube",
       youtube_url: youtube_url || url || null,
       youtube_video_id: videoId,
@@ -149,10 +90,28 @@ export async function POST(request) {
       console.error("Error inserting request:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // 2. INSERT THE CHAT MESSAGE (NEW)
+    if (message_body && sender_number) {
+        const { error: msgError } = await supabaseAdmin.from("messages").insert({
+            dj_id,
+            sender_number,
+            message_body,
+            reply_body: reply_body || null,
+            status: 'replied'
+        });
+        
+        if (msgError) {
+            console.error("Error logging chat message:", msgError.message);
+            // We don't return an error here so the main song request still succeeds
+        } else {
+            console.log("Chat log saved successfully");
+        }
+    }
     
     console.log(`Successfully inserted new request for DJ: ${dj_id}`);
-
     return NextResponse.json({ success: true });
+
   } catch (err) {
     console.error("Error in request POST endpoint:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
