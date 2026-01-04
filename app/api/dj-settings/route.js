@@ -15,6 +15,8 @@ if (
   );
 }
 
+// ... [Helper functions extractDJTag, findDJByTag, etc. remain exactly the same] ...
+
 /**
  * Extract DJ tag from message body
  */
@@ -44,7 +46,6 @@ function extractDJTag(message) {
   
   if (tagWords.length < 2) return null;
   const tag = tagWords.join(' ').replace(/[,.:!?]+$/, '').trim();
-  console.log("Extracted DJ tag:", tag, "from message:", cleanMessage);
   return tag;
 }
 
@@ -86,11 +87,10 @@ async function findDJByPhone(phone) {
     '1' + last10,
   ];
 
-  // First try exact matches
   for (const variant of phoneVariants) {
     if (!variant) continue;
     
-    const { data, error } = await supabaseAdmin
+    const { data } = await supabaseAdmin
       .from("dj_profiles")
       .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
       .eq("twilio_number", variant)
@@ -99,9 +99,8 @@ async function findDJByPhone(phone) {
     if (data) return data;
   }
   
-  // Fallback: search using LIKE with last 10 digits
   if (last10 && last10.length === 10) {
-    const { data, error } = await supabaseAdmin
+    const { data } = await supabaseAdmin
       .from("dj_profiles")
       .select("id, preferred_platform, twilio_number, tag, plan, name, accepting_requests, request_limit_count, request_limit_hours")
       .like("twilio_number", `%${last10}`)
@@ -237,7 +236,6 @@ export async function POST(request) {
       return NextResponse.json({ error: "Supabase admin not initialized" }, { status: 500 });
     }
 
-    // Parse the JSON body from the request
     const body = await request.json();
     const { dj_id, tag, request_limit_count, request_limit_hours } = body;
 
@@ -246,6 +244,7 @@ export async function POST(request) {
     }
 
     // Update the database
+    // FIX: Using .eq('id', dj_id) because the primary key column is 'id', not 'dj_id'
     const { data, error } = await supabaseAdmin
       .from('dj_profiles')
       .update({
@@ -253,7 +252,7 @@ export async function POST(request) {
         request_limit_count: request_limit_count,
         request_limit_hours: request_limit_hours
       })
-      .eq('dj_id', dj_id)
+      .eq('id', dj_id) 
       .select();
 
     if (error) {
