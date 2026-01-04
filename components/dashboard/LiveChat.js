@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-// FIX: Changed "../lib/supabaseClient" to "@/lib/supabaseClient"
+// FIX: Using alias
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { MessageSquare, User, Bot, Loader2, Ban } from "lucide-react";
 
@@ -90,10 +90,10 @@ export default function LiveChat({
         </div>
       )}
 
-      {/* Chat Area */}
+      {/* Chat Area - UPDATED: Added pb-8 for better bottom spacing */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto p-4 space-y-4 pr-2
+        className="flex-1 overflow-y-auto px-4 pt-4 pb-8 space-y-4 pr-2
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10

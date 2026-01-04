@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power } from "lucide-react";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
@@ -381,31 +381,37 @@ export default function Dashboard() {
           {/* MAIN CONTENT AREA */}
           <div className="lg:col-span-3">
              
-             {/* Tabs - Fixed Horizontal Scrollbar */}
-             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-                {TABS.map(tab => (
-                  <button 
-                    key={tab.key}
-                    onClick={() => setFilterStatus(tab.key)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border flex-shrink-0 ${
-                      filterStatus === tab.key 
-                      ? "bg-white/10 border-white/20 text-white" 
-                      : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
-                    }`}
-                  >
-                    {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
-                  </button>
-                ))}
+             {/* UPDATED: Tabs Layout (Pinned Trash Can) */}
+             <div className="flex items-center justify-between gap-3 mb-6">
+                {/* Scrollable Tabs Area */}
+                <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                    {TABS.map(tab => (
+                      <button 
+                        key={tab.key}
+                        onClick={() => setFilterStatus(tab.key)}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border flex-shrink-0 ${
+                          filterStatus === tab.key 
+                          ? "bg-white/10 border-white/20 text-white" 
+                          : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
+                        }`}
+                      >
+                        {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
+                      </button>
+                    ))}
+                </div>
+
+                {/* Fixed "Clear All" Button */}
                 <button 
                   onClick={clearAllFiltered} 
                   disabled={filteredRequests.length === 0}
-                  className={`ml-auto px-3 py-2 rounded-lg transition-colors flex-shrink-0 ${
+                  className={`flex-shrink-0 p-2.5 rounded-xl transition-colors border ${
                     filteredRequests.length > 0 
-                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' 
-                      : 'bg-transparent text-transparent pointer-events-none' 
+                      ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' 
+                      : 'bg-white/5 border-transparent text-gray-600 pointer-events-none' 
                   }`}
+                  title="Clear List"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={18} />
                 </button>
              </div>
 
