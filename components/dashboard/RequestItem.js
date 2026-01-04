@@ -42,7 +42,7 @@ export default function RequestItem({
   const renderTag = (text, icon = null) => {
       if (!text || text === "Unknown" || text === "FILL_THIS") return null;
       return (
-        <span className="px-2 py-0.5 rounded text-[10px] font-medium border border-white/5 bg-white/5 text-gray-400 flex items-center gap-1.5 capitalize">
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-white/5 bg-white/5 text-gray-400 flex items-center gap-1 capitalize whitespace-nowrap">
            {icon} {text}
         </span>
       );
@@ -62,7 +62,7 @@ export default function RequestItem({
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group relative p-3 sm:p-4 rounded-xl border transition-all duration-200 ${
+          className={`group relative rounded-xl border transition-all duration-200 overflow-hidden ${
             snapshot.isDragging 
               ? "shadow-2xl ring-2 ring-pink-500 bg-[#1a1a24] z-50 scale-[1.02]" 
               : isCurrentlyPlaying 
@@ -71,31 +71,19 @@ export default function RequestItem({
           }`}
           style={provided.draggableProps.style}
         >
-          {/* --- TOP RIGHT STATUS BADGE --- */}
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
-             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
-                  isPlayedStatus ? "text-gray-500 border border-white/5" : 
-                  isApproved ? "text-blue-400/80 border border-blue-500/10 bg-blue-500/5" : 
-                  isRejected ? "text-red-400/80 border border-red-500/10 bg-red-500/5" : 
-                  "text-yellow-400/80 border border-yellow-500/10 bg-yellow-500/5"
-                }`}>
-                  {isCurrentlyPlaying ? "Now Playing" : isPlayedStatus ? "Played" : req.status}
-             </span>
-          </div>
-
-          <div className="flex items-start gap-3 sm:gap-4 pr-16">
+          {/* Main Card Content */}
+          <div className="flex items-stretch p-3 sm:p-4 gap-3">
             
-            {/* Vertically Centered Drag Handle */}
+            {/* 1. Drag Handle (Now Visible on Mobile) */}
             <div 
                {...provided.dragHandleProps}
-               className="hidden md:flex w-8 h-8 rounded-lg items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors self-center"
+               className="flex w-6 sm:w-8 items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors rounded-lg"
             >
-               <GripVertical size={16} />
+               <GripVertical size={20} />
             </div>
 
-            {/* Thumbnail */}
-            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb">
+            {/* 2. Thumbnail */}
+            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb self-start">
               {req.thumbnail ? (
                 <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover scale-[1.35]" />
               ) : (
@@ -119,60 +107,68 @@ export default function RequestItem({
               )}
             </div>
 
-            {/* Info Column */}
-            <div className="flex-1 min-w-0 flex flex-col justify-center min-h-[4rem]">
+            {/* 3. Info Column */}
+            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
               
-              {/* Title */}
-              <div className="mb-0.5">
-                {hasUrl ? (
-                    <button onClick={() => onPlay(req)} className="text-left group/title">
-                      <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors line-clamp-1">
-                        {req.title}
-                      </h3>
-                    </button>
-                  ) : (
-                    <h3 className="font-bold text-white text-sm sm:text-base leading-tight line-clamp-1">{req.title}</h3>
-                  )}
+              {/* Header: Title + Status Badge */}
+              <div className="flex justify-between items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    {hasUrl ? (
+                        <button onClick={() => onPlay(req)} className="text-left group/title w-full">
+                          <h3 className="font-bold text-white text-sm sm:text-base leading-tight group-hover/title:text-pink-400 transition-colors truncate">
+                            {req.title}
+                          </h3>
+                        </button>
+                      ) : (
+                        <h3 className="font-bold text-white text-sm sm:text-base leading-tight truncate">{req.title}</h3>
+                      )}
+                      <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">{req.artist}</p>
+                  </div>
+
+                  {/* Desktop Status Badge (Hidden on very small screens if needed, but useful) */}
+                  <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                      isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
+                      isPlayedStatus ? "text-gray-500 border border-white/5" : 
+                      isApproved ? "text-blue-400/80 border border-blue-500/10 bg-blue-500/5" : 
+                      isRejected ? "text-red-400/80 border border-red-500/10 bg-red-500/5" : 
+                      "text-yellow-400/80 border border-yellow-500/10 bg-yellow-500/5"
+                    }`}>
+                      {isCurrentlyPlaying ? "Playing" : isPlayedStatus ? "Played" : req.status}
+                  </span>
               </div>
 
-              {/* Artist + User Info */}
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <p className="text-xs sm:text-sm text-gray-300 font-medium truncate max-w-[150px] sm:max-w-[200px]">{req.artist}</p>
-                  
-                  <span className="hidden sm:inline text-gray-700 text-[10px]">•</span>
-                  
-                  <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono px-1.5 py-0.5 rounded-full">
-                    <div className="flex items-center gap-1 border-r border-white/10 pr-2">
-                      <User size={10} />
-                      <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors" title="Ban User">
-                        {req.requestedBy}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock size={10} />
-                      <span>{timeAgo(req.requestedAt)}</span>
-                    </div>
+              {/* User Info Row */}
+              <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono bg-white/5 px-2 py-1 rounded-md w-fit max-w-full">
+                 <div className="flex items-center gap-1 min-w-0">
+                    <User size={10} className="shrink-0"/>
+                    <button onClick={handleBanUser} className="hover:text-red-400 hover:underline transition-colors truncate">
+                      {req.requestedBy}
+                    </button>
+                 </div>
+                 <span className="text-gray-700 mx-0.5">•</span>
+                 <div className="flex items-center gap-1 shrink-0">
+                    <Clock size={10} />
+                    <span>{timeAgo(req.requestedAt)}</span>
                  </div>
               </div>
 
               {/* Tags Row */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                  {req.explicit === "Explicit" && (
-                     <span className="px-2 py-0.5 rounded text-[10px] font-medium border border-red-500/20 bg-red-500/10 text-red-400">Explicit</span>
+                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-red-500/20 bg-red-500/10 text-red-400">Explicit</span>
                  )}
                  {req.explicit === "Clean" && (
-                     <span className="px-2 py-0.5 rounded text-[10px] font-medium border border-green-500/20 bg-green-500/10 text-green-400">Clean</span>
+                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-green-500/20 bg-green-500/10 text-green-400">Clean</span>
                  )}
-                 {renderTag(req.genre, <ListMusic size={10}/>)}
-                 {renderTag(req.energy, <Zap size={10}/>)}
-                 {renderTag(req.mood, <Smile size={10}/>)}
+                 {renderTag(req.genre)}
+                 {renderTag(req.energy)}
+                 {renderTag(req.mood)}
               </div>
             </div>
           </div>
 
           {/* --- ACTION BUTTONS (Desktop) --- */}
-          <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-2">
-             
+          <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-2 bg-[#12121a]/90 backdrop-blur-sm pl-2 rounded-l-xl">
              {isPending && (
                <>
                  <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
@@ -203,7 +199,6 @@ export default function RequestItem({
                     <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
                         <Trash2 size={16} />
                     </button>
-                    {/* RESTORE BUTTON */}
                     <button onClick={() => onUpdateStatus(req.id, "approved")} className={btnSecondary}>
                         <RotateCcw size={14} /> Restore
                     </button>
@@ -215,7 +210,6 @@ export default function RequestItem({
                     <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
                         <Trash2 size={16} />
                     </button>
-                    {/* RE-QUEUE BUTTON - Same style as Restore */}
                     <button onClick={() => onUpdateStatus(req.id, "approved")} className={btnSecondary}>
                         <RotateCcw size={14} /> Re-Queue
                     </button>
@@ -224,32 +218,32 @@ export default function RequestItem({
           </div>
 
           {/* --- ACTION BUTTONS (Mobile) --- */}
-          <div className="sm:hidden flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
+          <div className="sm:hidden grid grid-cols-[1fr,auto] gap-1 p-2 border-t border-white/5 bg-black/20">
              {isPending ? (
                <>
-                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-3 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
-                  <ThumbsUp size={14} /> Approve
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="h-10 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
+                  <ThumbsUp size={16} /> Approve
                 </button>
-                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-3 bg-white/5 text-gray-400 rounded-lg">
-                  <Ban size={16} />
+                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
+                  <Ban size={18} />
                 </button>
                </>
              ) : isApproved ? (
                 <>
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 py-3 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
-                    <Check size={14} /> Mark Played
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="h-10 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95 transition-transform">
+                    <Check size={16} /> Mark Played
                   </button>
-                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-3 bg-white/5 text-gray-400 rounded-lg">
-                    <Ban size={16} />
+                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="h-10 w-12 bg-white/5 text-gray-400 rounded-lg flex items-center justify-center active:bg-red-500/20 active:text-red-400 transition-colors">
+                    <Ban size={18} />
                   </button>
                 </>
              ) : (
-                <div className="flex w-full gap-2">
-                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-3 bg-white/5 border border-white/10 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                <div className="col-span-2 flex gap-2">
+                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 h-10 bg-white/5 border border-white/10 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 active:bg-white/10 transition-colors">
                      <RotateCcw size={14} /> {isRejected ? "Restore" : "Re-Queue"}
                   </button>
-                  <button onClick={() => onDelete(req.id)} className="px-4 py-3 bg-white/5 text-red-400 rounded-lg">
-                      <Trash2 size={16} />
+                  <button onClick={() => onDelete(req.id)} className="h-10 w-12 bg-white/5 text-red-400 rounded-lg flex items-center justify-center active:bg-red-500/10 transition-colors">
+                      <Trash2 size={18} />
                   </button>
                 </div>
              )}
