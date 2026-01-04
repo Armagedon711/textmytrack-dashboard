@@ -1,7 +1,7 @@
 import { 
   Play, ThumbsUp, Ban, Check, Trash2, Clock, 
-  ExternalLink, Music, User, RotateCcw, GripVertical, 
-  ListMusic, Zap, Smile
+  User, RotateCcw, GripVertical, 
+  ListMusic, Zap, Smile, Music
 } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd"; 
 
@@ -39,7 +39,6 @@ export default function RequestItem({
     onUpdateStatus(req.id, "rejected");
   };
 
-  // UPDATED: Cleaner, monochromatic tags to reduce visual noise
   const renderTag = (text, icon = null) => {
       if (!text || text === "Unknown" || text === "FILL_THIS") return null;
       return (
@@ -48,6 +47,14 @@ export default function RequestItem({
         </span>
       );
   };
+
+  // --- BUTTON STYLES ---
+  const btnBase = "rounded-lg flex items-center justify-center gap-2 transition-all duration-200";
+  const btnPrimaryBlue = `${btnBase} px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-900/20`;
+  const btnPrimaryGreen = `${btnBase} px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold shadow-lg shadow-green-900/20`;
+  const btnSecondary = `${btnBase} px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 hover:text-white text-xs font-medium`;
+  const btnIcon = `${btnBase} p-2 text-gray-500 hover:bg-white/5`;
+  const btnIconDestructive = `${btnIcon} hover:text-red-400 hover:bg-red-500/10`;
 
   return (
     <Draggable draggableId={req.id.toString()} index={index}>
@@ -64,7 +71,7 @@ export default function RequestItem({
           }`}
           style={provided.draggableProps.style}
         >
-          {/* --- TOP RIGHT STATUS BADGE (Subtler) --- */}
+          {/* --- TOP RIGHT STATUS BADGE --- */}
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                   isCurrentlyPlaying ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" : 
@@ -79,7 +86,7 @@ export default function RequestItem({
 
           <div className="flex items-start gap-3 sm:gap-4 pr-16">
             
-            {/* UPDATED: Vertically Centered Drag Handle */}
+            {/* Vertically Centered Drag Handle */}
             <div 
                {...provided.dragHandleProps}
                className="hidden md:flex w-8 h-8 rounded-lg items-center justify-center flex-shrink-0 text-gray-600 cursor-grab active:cursor-grabbing hover:bg-white/5 hover:text-gray-300 transition-colors self-center"
@@ -148,17 +155,14 @@ export default function RequestItem({
                  </div>
               </div>
 
-              {/* UPDATED: Cleaner Tags Row */}
+              {/* Tags Row */}
               <div className="flex flex-wrap items-center gap-2">
-                 {/* Explicit is the only one with color (Red) for safety */}
                  {req.explicit === "Explicit" && (
                      <span className="px-2 py-0.5 rounded text-[10px] font-medium border border-red-500/20 bg-red-500/10 text-red-400">Explicit</span>
                  )}
                  {req.explicit === "Clean" && (
                      <span className="px-2 py-0.5 rounded text-[10px] font-medium border border-green-500/20 bg-green-500/10 text-green-400">Clean</span>
                  )}
-                 
-                 {/* Neutral Tags */}
                  {renderTag(req.genre, <ListMusic size={10}/>)}
                  {renderTag(req.energy, <Zap size={10}/>)}
                  {renderTag(req.mood, <Smile size={10}/>)}
@@ -166,55 +170,53 @@ export default function RequestItem({
             </div>
           </div>
 
-          {/* --- ACTION BUTTONS (Desktop - Cleaned Up) --- */}
-          <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-3">
+          {/* --- ACTION BUTTONS (Desktop) --- */}
+          <div className="hidden sm:flex absolute bottom-4 right-4 items-center gap-2">
              
-             {/* PENDING: Approve highlighted, others ghosted */}
              {isPending && (
                <>
-                 <button onClick={() => onDelete(req.id)} className="text-gray-600 hover:text-red-400 transition-colors" title="Delete">
+                 <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
                    <Trash2 size={16} />
                  </button>
-                 <button onClick={() => onUpdateStatus(req.id, "rejected")} className="text-gray-600 hover:text-red-400 transition-colors" title="Reject">
+                 <button onClick={() => onUpdateStatus(req.id, "rejected")} className={btnIconDestructive} title="Reject">
                    <Ban size={16} />
                  </button>
-                 <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-blue-900/20">
+                 <button onClick={() => onUpdateStatus(req.id, "approved")} className={btnPrimaryBlue}>
                    <ThumbsUp size={14} /> Approve
                  </button>
                </>
              )}
 
-             {/* APPROVED: Mark Played highlighted */}
              {isApproved && (
                 <>
-                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="text-gray-600 hover:text-red-400 transition-colors" title="Reject">
+                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className={btnIconDestructive} title="Reject">
                     <Ban size={16} />
                   </button>
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-500 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-green-900/20">
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className={btnPrimaryGreen}>
                     <Check size={14} /> Mark Played
                   </button>
                 </>
              )}
 
-             {/* REJECTED: Restore highlighted */}
              {isRejected && (
                 <>
-                    <button onClick={() => onDelete(req.id)} className="text-gray-600 hover:text-red-400 transition-colors" title="Delete">
+                    <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
                         <Trash2 size={16} />
                     </button>
-                    <button onClick={() => onUpdateStatus(req.id, "approved")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors border border-white/10">
+                    {/* RESTORE BUTTON */}
+                    <button onClick={() => onUpdateStatus(req.id, "approved")} className={btnSecondary}>
                         <RotateCcw size={14} /> Restore
                     </button>
                 </>
              )}
 
-             {/* PLAYED: Re-Queue ghosted */}
              {isPlayedStatus && (
                 <>
-                    <button onClick={() => onDelete(req.id)} className="text-gray-600 hover:text-red-400 transition-colors" title="Delete">
+                    <button onClick={() => onDelete(req.id)} className={btnIconDestructive} title="Delete">
                         <Trash2 size={16} />
                     </button>
-                    <button onClick={() => onUpdateStatus(req.id, "approved")} className="text-gray-500 hover:text-blue-400 transition-colors flex items-center gap-1 text-xs font-medium">
+                    {/* RE-QUEUE BUTTON - Same style as Restore */}
+                    <button onClick={() => onUpdateStatus(req.id, "approved")} className={btnSecondary}>
                         <RotateCcw size={14} /> Re-Queue
                     </button>
                 </>
@@ -225,28 +227,28 @@ export default function RequestItem({
           <div className="sm:hidden flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
              {isPending ? (
                <>
-                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-3 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
                   <ThumbsUp size={14} /> Approve
                 </button>
-                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-2 bg-white/5 text-gray-400 rounded-lg">
+                <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-3 bg-white/5 text-gray-400 rounded-lg">
                   <Ban size={16} />
                 </button>
                </>
              ) : isApproved ? (
                 <>
-                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 py-2 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                  <button onClick={() => onUpdateStatus(req.id, "played")} className="flex-1 py-3 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
                     <Check size={14} /> Mark Played
                   </button>
-                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-3 py-2 bg-white/5 text-gray-400 rounded-lg">
+                  <button onClick={() => onUpdateStatus(req.id, "rejected")} className="px-4 py-3 bg-white/5 text-gray-400 rounded-lg">
                     <Ban size={16} />
                   </button>
                 </>
              ) : (
                 <div className="flex w-full gap-2">
-                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-2 bg-white/5 text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
-                     <RotateCcw size={14} /> Restore
+                  <button onClick={() => onUpdateStatus(req.id, "approved")} className="flex-1 py-3 bg-white/5 border border-white/10 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                     <RotateCcw size={14} /> {isRejected ? "Restore" : "Re-Queue"}
                   </button>
-                  <button onClick={() => onDelete(req.id)} className="px-3 py-2 bg-white/5 text-red-400 rounded-lg">
+                  <button onClick={() => onDelete(req.id)} className="px-4 py-3 bg-white/5 text-red-400 rounded-lg">
                       <Trash2 size={16} />
                   </button>
                 </div>
