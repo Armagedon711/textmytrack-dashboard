@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import { Settings, X, Save, AlertCircle, CheckCircle2, DollarSign, Mail, Lock, Ban, Trash2, Plus, Clock, ShieldAlert } from "lucide-react";
+import { 
+  X, Save, AlertCircle, CheckCircle2, DollarSign, Mail, 
+  Lock, Ban, Trash2, Plus, ShieldAlert, User, Music, Settings 
+} from "lucide-react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 
 export default function SettingsModal({ 
@@ -9,13 +12,15 @@ export default function SettingsModal({
   user, 
   universalNumber 
 }) {
-  const [activeTab, setActiveTab] = useState("profile"); // profile | blacklist
+  // Navigation State
+  const [activeSection, setActiveSection] = useState("profile"); // profile | controls | blacklist | account
   
-  // -- General Settings State --
+  // -- Data State --
   const [tag, setTag] = useState(djProfile?.tag || "");
   const [limitCount, setLimitCount] = useState(djProfile?.request_limit_count || 5);
   const [limitHours, setLimitHours] = useState(djProfile?.request_limit_hours || 1);
 
+  // -- UI State --
   const [status, setStatus] = useState({ type: "", msg: "" });
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -26,16 +31,16 @@ export default function SettingsModal({
   
   const supabase = supabaseBrowserClient();
 
-  // Load Blacklist when tab changes
+  // Load Blacklist when accessing that section
   useEffect(() => {
-    if (isOpen && activeTab === 'blacklist' && user?.id) {
+    if (isOpen && activeSection === 'blacklist' && user?.id) {
        fetch(`/api/blacklist?dj_id=${user.id}`)
          .then(res => res.json())
          .then(data => setBlacklist(data.blacklist || []));
     }
-  }, [isOpen, activeTab, user]);
+  }, [isOpen, activeSection, user]);
 
-  // Sync state if djProfile updates from parent
+  // Sync state if djProfile updates
   useEffect(() => {
     if (djProfile) {
         setTag(djProfile.tag || "");
@@ -64,7 +69,6 @@ export default function SettingsModal({
 
     setLoading(true);
     try {
-      // FIX: Use the API route instead of direct Supabase update to avoid RLS/Permission errors
       const res = await fetch("/api/dj-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,14 +81,10 @@ export default function SettingsModal({
       });
 
       const result = await res.json();
-
-      if (!res.ok) {
-        throw new Error(result.error || "Failed to update settings");
-      }
+      if (!res.ok) throw new Error(result.error || "Failed to update settings");
       
       setStatus({ type: "success", msg: "Settings saved successfully!" });
-      
-      // Optional: Refresh parent data or user context here if needed
+      setTimeout(() => setStatus({ type: "", msg: "" }), 3000);
 
     } catch (e) { 
         console.error(e);
@@ -102,7 +102,6 @@ export default function SettingsModal({
       setResetLoading(false);
   };
 
-  // Blacklist Actions
   const handleBan = async () => {
       if(!newBanNumber) return;
       const res = await fetch("/api/blacklist", {
@@ -123,167 +122,262 @@ export default function SettingsModal({
       setBlacklist(prev => prev.filter(item => item.phone_number !== phone));
   };
 
+  // -- Navigation Item Component --
+  const NavItem = ({ id, label, icon: Icon }) => (
+    <button 
+      onClick={() => setActiveSection(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl ${
+        activeSection === id 
+          ? "bg-pink-500/10 text-pink-400 border border-pink-500/20" 
+          : "text-gray-400 hover:text-white hover:bg-white/5"
+      }`}
+    >
+      <Icon size={18} />
+      {label}
+    </button>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+       <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
        
-       <div className="relative w-full max-w-md bg-[#16161f] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-         {/* Header */}
-         <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#12121a]">
-            <div className="flex items-center gap-3">
+       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex h-[600px] max-h-[90vh]">
+         
+         {/* LEFT SIDEBAR */}
+         <div className="w-64 bg-[#16161f] border-r border-white/5 flex flex-col p-4">
+            <div className="flex items-center gap-3 px-2 mb-8 mt-2">
+               <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
+                 <Settings size={18} className="text-white" />
+               </div>
                <h2 className="text-lg font-bold text-white">Settings</h2>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-gray-400">
-              <X size={18} />
-            </button>
-         </div>
 
-         {/* Tabs */}
-         <div className="flex border-b border-white/5">
-             <button 
-                onClick={() => setActiveTab('profile')} 
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'profile' ? 'text-pink-400 border-b-2 border-pink-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
-             >
-                 General
-             </button>
-             <button 
-                onClick={() => setActiveTab('blacklist')} 
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'blacklist' ? 'text-red-400 border-b-2 border-red-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
-             >
-                 Blacklist
-             </button>
-         </div>
+            <div className="space-y-1 flex-1">
+              <NavItem id="profile" label="General Profile" icon={User} />
+              <NavItem id="controls" label="Guest Controls" icon={ShieldAlert} />
+              <NavItem id="blacklist" label="Blacklist" icon={Ban} />
+              <NavItem id="account" label="Account" icon={Lock} />
+            </div>
 
-         <div className="p-6 overflow-y-auto">
-            {activeTab === 'profile' ? (
-                /* GENERAL SETTINGS CONTENT */
-                <div className="space-y-8">
-                    {status.msg && (
-                        <div className={`p-3 rounded-lg border flex items-center gap-2 text-sm ${status.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
-                            {status.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>}
-                            {status.msg}
-                        </div>
-                    )}
-                    
-                    {/* Subscription - Read Only */}
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Subscription</label>
-                        <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
-                            <div><span className="block font-semibold text-lg text-white capitalize">{djProfile?.plan || "Trial"} Plan</span></div>
-                            <button onClick={() => alert("Coming soon")} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2a40] text-white font-medium border border-white/5"><DollarSign size={16} className="text-green-400" />Manage</button>
-                        </div>
-                    </div>
-
-                    {/* DJ Profile Settings */}
-                    <div className="space-y-5">
-                        <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">DJ Profile</label>
-                            <button onClick={handleSaveSettings} disabled={loading} className="text-xs bg-pink-600 hover:bg-pink-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2">
-                                {loading ? "Saving..." : <><Save size={14} /> Save Changes</>}
-                            </button>
-                        </div>
-                        
-                        {/* Tag Input */}
-                        <div className="space-y-2">
-                             <label className="text-xs text-gray-400">DJ Tag</label>
-                             <input value={tag} onChange={(e) => setTag(e.target.value)} className="w-full bg-[#1b1b2e] border border-[#2a2a40] rounded-lg px-4 py-2.5 text-white outline-none focus:border-pink-500 transition-colors" placeholder="Enter DJ Tag..." />
-                             <p className="text-xs text-gray-500">Guests text this tag to join your session.</p>
-                        </div>
-
-                        {/* Rate Limiting Section */}
-                        <div className="p-4 bg-[#1b1b2e]/50 border border-white/5 rounded-xl space-y-4">
-                            <div className="flex items-center gap-2 text-white font-medium">
-                                <ShieldAlert size={16} className="text-pink-400" />
-                                <span>Guest Limits</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-400">Max Requests</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="number" 
-                                            min="1" 
-                                            max="100"
-                                            value={limitCount} 
-                                            onChange={(e) => setLimitCount(e.target.value)} 
-                                            className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-lg px-3 py-2 text-white outline-none focus:border-pink-500 text-center" 
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-400">Per Time (Hours)</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="number" 
-                                            min="1" 
-                                            max="24"
-                                            value={limitHours} 
-                                            onChange={(e) => setLimitHours(e.target.value)} 
-                                            className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-lg px-3 py-2 text-white outline-none focus:border-pink-500 text-center" 
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-xs text-gray-500 text-center">
-                                Guests can make <strong>{limitCount}</strong> requests every <strong>{limitHours}</strong> hour{limitHours > 1 ? 's' : ''}.
-                            </p>
-                        </div>
-
-                        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm"><p className="text-white">Text <span className="text-pink-400 font-bold">{tag || "TAG"}</span> to <span className="text-gray-300 font-mono">{formatPhoneNumber(universalNumber)}</span></p></div>
-                    </div>
-
-                    {/* Account Settings */}
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Account</label>
-                        <div className="bg-[#0e0e14] border border-white/10 rounded-xl overflow-hidden divide-y divide-white/5">
-                            <div className="p-4 flex items-center justify-between"><div className="flex items-center gap-3 text-gray-400"><Mail size={18} /><span className="text-sm">Email</span></div><span className="text-sm text-white">{user?.email}</span></div>
-                            <div className="p-4 flex items-center justify-between"><div className="flex items-center gap-3 text-gray-400"><Lock size={18} /><span className="text-sm">Password</span></div><button onClick={handleResetPassword} disabled={resetLoading} className="text-xs bg-white/5 hover:bg-white/10 text-white px-3 py-1.5 rounded-lg border border-white/5">{resetLoading ? "Sending..." : "Send Reset Email"}</button></div>
-                        </div>
+            <div className="pt-4 border-t border-white/5">
+                <div className="px-4 py-3 bg-[#0e0e14] rounded-xl border border-white/5">
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Current Plan</p>
+                    <div className="flex items-center justify-between">
+                        <span className="text-white font-medium capitalize">{djProfile?.plan || "Trial"}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/20">Active</span>
                     </div>
                 </div>
-            ) : (
-                /* BLACKLIST CONTENT (Unchanged) */
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Add to Blacklist</label>
+            </div>
+         </div>
+
+         {/* RIGHT CONTENT AREA */}
+         <div className="flex-1 flex flex-col relative bg-[#12121a]">
+            
+            {/* Mobile Close Button (Top Right) */}
+            <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg text-gray-400 z-10">
+              <X size={20} />
+            </button>
+
+            {/* Content Scrollable Area */}
+            <div className="flex-1 overflow-y-auto p-8">
+                
+                {/* Status Message Toast */}
+                {status.msg && (
+                    <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 text-sm ${
+                        status.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'
+                    }`}>
+                        {status.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>}
+                        {status.msg}
+                    </div>
+                )}
+
+                {/* --- SECTIONS --- */}
+
+                {/* 1. GENERAL PROFILE */}
+                {activeSection === 'profile' && (
+                    <div className="space-y-8 max-w-lg">
+                        <div>
+                            <h3 className="text-xl font-bold text-white mb-1">General Profile</h3>
+                            <p className="text-gray-500 text-sm">Manage your public DJ identity and keywords.</p>
+                        </div>
+
+                        <div className="space-y-4">
+                             <div className="space-y-2">
+                                 <label className="text-sm font-medium text-gray-300">DJ Tag</label>
+                                 <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Music size={16} className="text-gray-500" />
+                                    </div>
+                                    <input 
+                                        value={tag} 
+                                        onChange={(e) => setTag(e.target.value)} 
+                                        className="w-full bg-[#1b1b2e] border border-[#2a2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all" 
+                                        placeholder="e.g. DJ Joey" 
+                                    />
+                                 </div>
+                                 <p className="text-xs text-gray-500">Guests text this tag to join your session.</p>
+                            </div>
+
+                            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl flex gap-3">
+                                <div className="mt-0.5"><CheckCircle2 size={16} className="text-blue-400" /></div>
+                                <div className="space-y-1">
+                                    <p className="text-sm text-gray-300 font-medium">Texting Instructions</p>
+                                    <p className="text-xs text-gray-500">Tell your guests to text <span className="text-pink-400 font-bold">{tag || "TAG"}</span> to <span className="text-white font-mono">{formatPhoneNumber(universalNumber)}</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 2. GUEST CONTROLS */}
+                {activeSection === 'controls' && (
+                    <div className="space-y-8 max-w-lg">
+                        <div>
+                            <h3 className="text-xl font-bold text-white mb-1">Guest Controls</h3>
+                            <p className="text-gray-500 text-sm">Set limits to prevent spam and fair usage.</p>
+                        </div>
+
+                        <div className="p-6 bg-[#1b1b2e]/50 border border-white/5 rounded-2xl space-y-6">
+                            <div className="flex items-center gap-2 text-white font-medium pb-4 border-b border-white/5">
+                                <ShieldAlert size={18} className="text-pink-400" />
+                                <span>Rate Limiting</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Max Songs</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="100"
+                                        value={limitCount} 
+                                        onChange={(e) => setLimitCount(e.target.value)} 
+                                        className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-xl px-4 py-3 text-white text-lg font-mono outline-none focus:border-pink-500 transition-colors" 
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Time Window (Hours)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="24"
+                                        value={limitHours} 
+                                        onChange={(e) => setLimitHours(e.target.value)} 
+                                        className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-xl px-4 py-3 text-white text-lg font-mono outline-none focus:border-pink-500 transition-colors" 
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-400 bg-black/20 p-3 rounded-lg border border-white/5">
+                                Logic: A single phone number can make <strong>{limitCount}</strong> requests every <strong>{limitHours}</strong> hour{limitHours > 1 ? 's' : ''}.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. BLACKLIST */}
+                {activeSection === 'blacklist' && (
+                    <div className="space-y-6 h-full flex flex-col">
+                        <div>
+                            <h3 className="text-xl font-bold text-white mb-1">Blacklist</h3>
+                            <p className="text-gray-500 text-sm">Block specific phone numbers from making requests.</p>
+                        </div>
+
                         <div className="flex gap-2">
                              <input 
                                value={newBanNumber}
                                onChange={(e) => setNewBanNumber(e.target.value)}
-                               className="flex-1 bg-[#1b1b2e] border border-[#2a2a40] rounded-lg px-4 py-2 text-white placeholder-gray-600 focus:border-red-500 outline-none"
-                               placeholder="Enter phone number..."
+                               className="flex-1 bg-[#1b1b2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:border-red-500 outline-none transition-all"
+                               placeholder="Enter phone number to block..."
                              />
-                             <button onClick={handleBan} className="bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg hover:bg-red-500/30">
-                                 <Plus size={18} />
+                             <button onClick={handleBan} className="bg-red-500/10 text-red-400 border border-red-500/20 px-6 py-2 rounded-xl hover:bg-red-500/20 font-medium transition-colors flex items-center gap-2">
+                                 <Ban size={18} /> Block
                              </button>
                         </div>
-                    </div>
 
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Blocked Numbers ({blacklist.length})</label>
-                        <div className="bg-[#0e0e14] border border-white/10 rounded-xl overflow-hidden divide-y divide-white/5 max-h-[300px] overflow-y-auto">
-                            {blacklist.length === 0 ? (
-                                <div className="p-8 text-center text-gray-600 text-sm">No blocked numbers</div>
-                            ) : (
-                                blacklist.map((item) => (
-                                    <div key={item.id} className="p-3 flex items-center justify-between group">
-                                        <div className="flex items-center gap-3">
-                                            <Ban size={16} className="text-red-500" />
-                                            <span className="text-gray-300 font-mono text-sm">{formatPhoneNumber(item.phone_number)}</span>
-                                        </div>
-                                        <button 
-                                          onClick={() => handleUnban(item.phone_number)}
-                                          className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-green-400 transition-colors"
-                                          title="Unban"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                        <div className="flex-1 bg-[#0e0e14] border border-white/5 rounded-2xl overflow-hidden flex flex-col">
+                            <div className="p-3 border-b border-white/5 bg-white/5 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between">
+                                <span>Blocked Number</span>
+                                <span>Action</span>
+                            </div>
+                            <div className="overflow-y-auto flex-1 p-2 space-y-1">
+                                {blacklist.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-600 space-y-2">
+                                        <CheckCircle2 size={32} className="opacity-20" />
+                                        <span className="text-sm">No blocked numbers</span>
                                     </div>
-                                ))
-                            )}
+                                ) : (
+                                    blacklist.map((item) => (
+                                        <div key={item.id} className="p-3 flex items-center justify-between group hover:bg-white/5 rounded-lg transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
+                                                    <Ban size={14} className="text-red-500" />
+                                                </div>
+                                                <span className="text-gray-300 font-mono">{formatPhoneNumber(item.phone_number)}</span>
+                                            </div>
+                                            <button 
+                                              onClick={() => handleUnban(item.phone_number)}
+                                              className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-green-400 transition-colors"
+                                              title="Unban"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
+                )}
+
+                {/* 4. ACCOUNT */}
+                {activeSection === 'account' && (
+                    <div className="space-y-8 max-w-lg">
+                        <div>
+                            <h3 className="text-xl font-bold text-white mb-1">Account Settings</h3>
+                            <p className="text-gray-500 text-sm">Manage your login credentials.</p>
+                        </div>
+
+                        <div className="bg-[#1b1b2e]/50 border border-white/5 rounded-2xl overflow-hidden divide-y divide-white/5">
+                            <div className="p-6 flex items-center justify-between">
+                                <div className="flex items-center gap-4 text-gray-400">
+                                    <div className="p-2 bg-white/5 rounded-lg"><Mail size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-medium text-white">Email Address</p>
+                                        <p className="text-xs text-gray-500">{user?.email}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-6 flex items-center justify-between">
+                                <div className="flex items-center gap-4 text-gray-400">
+                                    <div className="p-2 bg-white/5 rounded-lg"><Lock size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-medium text-white">Password</p>
+                                        <p className="text-xs text-gray-500">Last changed recently</p>
+                                    </div>
+                                </div>
+                                <button onClick={handleResetPassword} disabled={resetLoading} className="text-xs bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg border border-white/5 font-medium transition-colors">
+                                    {resetLoading ? "Sending..." : "Reset Password"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* SAVE FOOTER (Only for sections that need saving) */}
+            {(activeSection === 'profile' || activeSection === 'controls') && (
+                <div className="p-4 border-t border-white/5 bg-[#16161f] flex justify-end">
+                    <button 
+                        onClick={handleSaveSettings} 
+                        disabled={loading} 
+                        className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-900/20 transition-all flex items-center gap-2"
+                    >
+                        {loading ? (
+                            <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> Saving...</span>
+                        ) : (
+                            <><Save size={18} /> Save Changes</>
+                        )}
+                    </button>
                 </div>
             )}
          </div>
