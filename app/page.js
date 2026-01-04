@@ -172,18 +172,15 @@ export default function Dashboard() {
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
 
-    // 1. Reorder the visible list in memory
     const items = Array.from(filteredRequests);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    // 2. FORCE NEW POSITIONS (0, 1000, 2000...)
     const updates = items.map((item, index) => ({
         id: item.id,
         position: index * 1000 
     }));
 
-    // 3. Update Local State
     setRequests(prev => {
         const next = prev.map(r => {
             const update = updates.find(u => u.id === r.id);
@@ -192,7 +189,6 @@ export default function Dashboard() {
         return next;
     });
 
-    // 4. Persist to DB
     const { error } = await supabase.from('requests').upsert(updates);
     if (error) console.error("Reorder failed", error);
   };
@@ -229,7 +225,9 @@ export default function Dashboard() {
 
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
+    // UPDATED MAIN CLASS: h-screen overflow-y-scroll (This forces the scrollbar to always exist)
+    <main className="h-screen overflow-y-scroll bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]">
+      
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
         <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
@@ -268,8 +266,8 @@ export default function Dashboard() {
         onVideoEnd={handleNextSong}
       />
 
-      {/* Main Container - Standard padding at bottom (pb-8) */}
-      <div className="relative max-w-7xl mx-auto p-4 lg:p-8 pb-8">
+      {/* Main Container - Standard padding at bottom */}
+      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
@@ -356,7 +354,7 @@ export default function Dashboard() {
                  />
             </DragDropContext>
 
-            {/* SPACER DIV: Adds height at the bottom of the list when minimized player is active */}
+            {/* SPACER DIV */}
             <div className={`transition-all duration-300 w-full ${videoModalId && isMinimized ? "h-64" : "h-24"}`} />
           </div>
         </div>
