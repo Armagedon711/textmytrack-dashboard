@@ -1,26 +1,20 @@
-import { Phone, Power, Circle, CheckCircle2 } from "lucide-react";
+import { Phone, Power, ExternalLink } from "lucide-react";
+import LiveChat from "./LiveChat"; 
 
-// Utility function to format phone number
 const formatPhoneNumber = (phoneNumber) => {
   if (!phoneNumber) return "...";
-  // CRITICAL FIX: Strip +1 and any non-digit characters first
   let cleaned = ('' + phoneNumber).replace(/\D/g, '');
-  
-  // Remove leading '1' if the length is 11 (e.g., +18557104644 -> 18557104644)
   if (cleaned.length === 11 && cleaned.startsWith('1')) {
       cleaned = cleaned.substring(1);
   }
-  
-  // Match a pattern for 10 digits
   const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
   if (match) {
     return '(' + match[1] + ') ' + match[2] + '-' + match[3];
   }
-  return phoneNumber; // Return original if it doesn't match 10 digits
+  return phoneNumber;
 };
 
 export default function StatsSidebar({ 
-  stats, 
   djProfile, 
   universalNumber, 
   acceptingRequests, 
@@ -30,13 +24,12 @@ export default function StatsSidebar({
   platformsConfig 
 }) {
   const isHeadliner = djProfile?.plan?.toLowerCase() === "headliner";
-  
-  // Apply formatting to both numbers
   const formattedUniversalNumber = formatPhoneNumber(universalNumber);
   const formattedTwilioNumber = formatPhoneNumber(djProfile?.twilio_number);
 
   return (
     <div className="space-y-6">
+      
       {/* Request Line Card */}
       <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
         <div className="flex items-center gap-3 mb-4">
@@ -46,7 +39,6 @@ export default function StatsSidebar({
           <div className="flex-1 min-w-0">
              <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Request Line</p>
              {isHeadliner ? (
-               // FIX: Use formattedTwilioNumber here
                <p className="text-lg font-bold text-white">{formattedTwilioNumber}</p>
              ) : (
                <div className="text-sm text-gray-300">
@@ -71,50 +63,28 @@ export default function StatsSidebar({
         </button>
       </div>
 
-      {/* Platform Selector */}
-      <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
-        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Open Songs In</p>
-        <div className="space-y-2">
+      {/* Platform Selector (Compact Dropdown) */}
+      <div className="p-4 rounded-2xl bg-[#12121a] border border-white/5 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-gray-400">
+           <ExternalLink size={16} />
+           <span className="text-sm font-medium">Open Songs In</span>
+        </div>
+        
+        <select 
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value)}
+          className="bg-[#1e1e2d] text-white text-sm border border-white/10 rounded-lg px-3 py-1.5 focus:outline-none focus:border-pink-500 cursor-pointer"
+        >
           {Object.entries(platformsConfig).map(([key, config]) => (
-            <button 
-              key={key} 
-              onClick={() => setPlatform(key)} 
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${
-                platform === key ? `${config.bgColor} ${config.borderColor} border-2` : "bg-white/5 border-transparent hover:bg-white/10"
-              }`}
-            >
-              <span className="text-xl">{config.icon}</span>
-              <span className={`font-medium ${platform === key ? config.textColor : "text-gray-300"}`}>{config.name}</span>
-              {platform === key && <CheckCircle2 size={16} className={`ml-auto ${config.textColor}`} />}
-            </button>
+            <option key={key} value={key}>
+               {config.name}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
 
-      {/* Stats */}
-      <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
-        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Tonight's Stats</p>
-        <div className="space-y-3">
-           <StatRow label="Total" count={stats.total} color="text-white" />
-           <div className="h-px bg-white/5" />
-           <StatRow label="Pending" count={stats.pending} color="text-yellow-400" dot />
-           <StatRow label="Approved" count={stats.approved} color="text-blue-400" dot />
-           <StatRow label="Rejected" count={stats.rejected} color="text-red-400" dot />
-           <StatRow label="Played" count={stats.played} color="text-green-400" dot />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatRow({ label, count, color, dot }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        {dot && <Circle size={8} className={`fill-current ${color}`} />}
-        <span className="text-gray-400 text-sm">{label}</span>
-      </div>
-      <span className={`${color} font-semibold`}>{count}</span>
+      {/* Live Chat Feed */}
+      {djProfile?.id && <LiveChat djId={djProfile.id} />}
     </div>
   );
 }
