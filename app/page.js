@@ -268,8 +268,8 @@ export default function Dashboard() {
         onVideoEnd={handleNextSong}
       />
 
-      {/* UPDATED: Increased bottom padding (pb-48 if minimized, pb-24 default) to prevent overlap */}
-      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
+      {/* Main Container - Standard padding at bottom (pb-8) */}
+      <div className="relative max-w-7xl mx-auto p-4 lg:p-8 pb-8">
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
@@ -355,6 +355,9 @@ export default function Dashboard() {
                    droppableId="request-list" 
                  />
             </DragDropContext>
+
+            {/* SPACER DIV: Adds height at the bottom of the list when minimized player is active */}
+            <div className={`transition-all duration-300 w-full ${videoModalId && isMinimized ? "h-64" : "h-24"}`} />
           </div>
         </div>
       </div>
