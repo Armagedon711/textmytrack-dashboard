@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabaseBrowserClient } from "../lib/supabaseClient";
+// FIX: Changed "../lib/supabaseClient" to "@/lib/supabaseClient"
+import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { MessageSquare, User, Bot, Loader2, Ban } from "lucide-react";
 
 export default function LiveChat({ 
   djId, 
   showHeader = true, 
-  className = "h-[400px]" // Default height for Desktop (StatsSidebar)
+  className = "h-[400px]" 
 }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +78,6 @@ export default function LiveChat({
   };
 
   return (
-    // UPDATED: Uses className prop for height/margin flexibility
     <div className={`flex flex-col bg-[#12121a] border border-white/5 rounded-2xl overflow-hidden mt-6 ${className}`}>
       
       {/* Header - Conditionally Rendered */}
@@ -90,7 +90,7 @@ export default function LiveChat({
         </div>
       )}
 
-      {/* Chat Area - Custom Scrollbar */}
+      {/* Chat Area */}
       <div 
         ref={scrollRef} 
         className="flex-1 overflow-y-auto p-4 space-y-4 pr-2
