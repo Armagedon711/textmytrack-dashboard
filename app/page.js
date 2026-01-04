@@ -72,13 +72,27 @@ export default function Dashboard() {
     requests.find(r => r.id === playingRequestId), 
   [requests, playingRequestId]);
 
+  // --- FIXED: Next Song Logic (Now Loops) ---
   const nextSong = useMemo(() => {
     if (!currentPlayingRequest) return null;
+    
+    // 1. Get the active queue (Pending or Approved songs with a video ID)
     const queue = requests
         .filter(r => (r.status === 'pending' || r.status === 'approved') && r.youtube_video_id)
         .sort((a, b) => (a.position || 0) - (b.position || 0));
+    
+    // If queue is empty, stop
+    if (queue.length === 0) return null;
+
+    // 2. Find where we are currently
     const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
-    return queue[currentIndex + 1] || null;
+    
+    // 3. Try to get the next song
+    const next = queue[currentIndex + 1];
+    
+    // 4. LOOP LOGIC: If 'next' doesn't exist (we are at the end), loop back to start
+    return next || queue[0];
+
   }, [requests, currentPlayingRequest]);
 
 
