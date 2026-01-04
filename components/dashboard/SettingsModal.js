@@ -5,6 +5,21 @@ import {
 } from "lucide-react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 
+// --- FIX 1: Moved NavItem OUTSIDE to prevent re-rendering/scroll jumping ---
+const NavItem = ({ id, label, icon: Icon, activeSection, setActiveSection }) => (
+  <button 
+    onClick={() => setActiveSection(id)}
+    className={`flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl whitespace-nowrap ${
+      activeSection === id 
+        ? "bg-pink-500/10 text-pink-400 border border-pink-500/20" 
+        : "text-gray-400 hover:text-white hover:bg-white/5"
+    }`}
+  >
+    <Icon size={18} />
+    {label}
+  </button>
+);
+
 export default function SettingsModal({ 
   isOpen, 
   onClose, 
@@ -12,8 +27,7 @@ export default function SettingsModal({
   user, 
   universalNumber 
 }) {
-  // Navigation State
-  const [activeSection, setActiveSection] = useState("profile"); // profile | controls | blacklist | account
+  const [activeSection, setActiveSection] = useState("profile"); 
   
   // -- Data State --
   const [tag, setTag] = useState(djProfile?.tag || "");
@@ -31,7 +45,6 @@ export default function SettingsModal({
   
   const supabase = supabaseBrowserClient();
 
-  // Load Blacklist when accessing that section
   useEffect(() => {
     if (isOpen && activeSection === 'blacklist' && user?.id) {
        fetch(`/api/blacklist?dj_id=${user.id}`)
@@ -40,7 +53,6 @@ export default function SettingsModal({
     }
   }, [isOpen, activeSection, user]);
 
-  // Sync state if djProfile updates
   useEffect(() => {
     if (djProfile) {
         setTag(djProfile.tag || "");
@@ -61,8 +73,6 @@ export default function SettingsModal({
 
   const handleSaveSettings = async () => {
     setStatus({ type: "", msg: "" });
-    
-    // Validation
     if (!tag.trim()) return setStatus({ type: "error", msg: "Tag cannot be empty" });
     if (limitCount < 1 || limitCount > 100) return setStatus({ type: "error", msg: "Max requests must be between 1 and 100" });
     if (limitHours < 1 || limitHours > 24) return setStatus({ type: "error", msg: "Time limit must be between 1 and 24 hours" });
@@ -122,23 +132,7 @@ export default function SettingsModal({
       setBlacklist(prev => prev.filter(item => item.phone_number !== phone));
   };
 
-  // -- Navigation Item Component --
-  const NavItem = ({ id, label, icon: Icon }) => (
-    <button 
-      onClick={() => setActiveSection(id)}
-      className={`flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl whitespace-nowrap ${
-        activeSection === id 
-          ? "bg-pink-500/10 text-pink-400 border border-pink-500/20" 
-          : "text-gray-400 hover:text-white hover:bg-white/5"
-      }`}
-    >
-      <Icon size={18} />
-      {label}
-    </button>
-  );
-
   return (
-    // FIX: Reduced outer padding from p-4 to p-2 on mobile for more width
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
        <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
        
@@ -146,7 +140,6 @@ export default function SettingsModal({
          
          {/* LEFT SIDEBAR (Desktop) / TOP NAV (Mobile) */}
          <div className="w-full md:w-64 bg-[#16161f] border-b md:border-b-0 md:border-r border-white/5 flex flex-col shrink-0">
-            {/* Header */}
             <div className="flex items-center justify-between p-4 md:mb-4">
                 <div className="flex items-center gap-3">
                    <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
@@ -154,21 +147,19 @@ export default function SettingsModal({
                    </div>
                    <h2 className="text-lg font-bold text-white">Settings</h2>
                 </div>
-                {/* Mobile Close Button visible in header */}
                 <button onClick={onClose} className="md:hidden p-2 hover:bg-white/10 rounded-lg text-gray-400">
                   <X size={20} />
                 </button>
             </div>
 
-            {/* Nav Items - Horizontal on mobile, Vertical on desktop */}
             <div className="flex md:flex-col overflow-x-auto md:overflow-visible px-4 md:px-2 space-x-2 md:space-x-0 md:space-y-1 pb-4 md:pb-0 scrollbar-hide">
-              <NavItem id="profile" label="General Profile" icon={User} />
-              <NavItem id="controls" label="Guest Controls" icon={ShieldAlert} />
-              <NavItem id="blacklist" label="Blacklist" icon={Ban} />
-              <NavItem id="account" label="Account" icon={Lock} />
+              <NavItem id="profile" label="General Profile" icon={User} activeSection={activeSection} setActiveSection={setActiveSection} />
+              <NavItem id="controls" label="Guest Controls" icon={ShieldAlert} activeSection={activeSection} setActiveSection={setActiveSection} />
+              <NavItem id="blacklist" label="Blacklist" icon={Ban} activeSection={activeSection} setActiveSection={setActiveSection} />
+              <NavItem id="account" label="Account" icon={Lock} activeSection={activeSection} setActiveSection={setActiveSection} />
             </div>
 
-            {/* Plan Info - Hidden on mobile to save space */}
+            {/* Desktop Plan Info */}
             <div className="hidden md:block mt-auto p-4 border-t border-white/5">
                 <div className="px-4 py-3 bg-[#0e0e14] rounded-xl border border-white/5">
                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Current Plan</p>
@@ -182,16 +173,12 @@ export default function SettingsModal({
 
          {/* RIGHT CONTENT AREA */}
          <div className="flex-1 flex flex-col relative bg-[#12121a] min-h-0">
-            
-            {/* Desktop Close Button */}
             <button onClick={onClose} className="hidden md:block absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg text-gray-400 z-10">
               <X size={20} />
             </button>
 
-            {/* Content Scrollable Area - Added overflow-x-hidden */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
                 
-                {/* Status Message Toast */}
                 {status.msg && (
                     <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 text-sm ${
                         status.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'
@@ -201,11 +188,22 @@ export default function SettingsModal({
                     </div>
                 )}
 
-                {/* --- SECTIONS --- */}
-
                 {/* 1. GENERAL PROFILE */}
                 {activeSection === 'profile' && (
                     <div className="space-y-8 max-w-lg">
+                        
+                        {/* --- FIX 2: MOBILE PLAN INFO --- */}
+                        <div className="block md:hidden mb-6">
+                            <div className="px-4 py-3 bg-[#16161f] rounded-xl border border-white/5 flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Current Plan</p>
+                                    <p className="text-white font-medium capitalize">{djProfile?.plan || "Trial"}</p>
+                                </div>
+                                <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/20">Active</span>
+                            </div>
+                        </div>
+                        {/* ------------------------------- */}
+
                         <div>
                             <h3 className="text-xl font-bold text-white mb-1">General Profile</h3>
                             <p className="text-gray-500 text-sm">Manage your public DJ identity and keywords.</p>
@@ -292,16 +290,13 @@ export default function SettingsModal({
                             <p className="text-gray-500 text-sm">Block specific phone numbers from making requests.</p>
                         </div>
 
-                        {/* FIX: Mobile optimized input group */}
                         <div className="flex gap-2">
                              <input 
                                value={newBanNumber}
                                onChange={(e) => setNewBanNumber(e.target.value)}
-                               // Added min-w-0 to prevent flex item overflow on small screens
                                className="flex-1 min-w-0 bg-[#1b1b2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:border-red-500 outline-none transition-all"
                                placeholder="Enter phone number..."
                              />
-                             {/* Reduced padding on mobile (px-4 vs px-6) */}
                              <button onClick={handleBan} className="bg-red-500/10 text-red-400 border border-red-500/20 px-4 md:px-6 py-2 rounded-xl hover:bg-red-500/20 font-medium transition-colors flex items-center gap-2 flex-shrink-0">
                                  <Ban size={18} /> <span className="hidden sm:inline">Block</span> <span className="sm:hidden">Block</span>
                              </button>
