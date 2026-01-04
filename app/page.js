@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2 } from "lucide-react";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, ExternalLink, Power } from "lucide-react"; // Added Icons
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
@@ -11,6 +11,7 @@ import PlayerModal from "../components/dashboard/PlayerModal";
 import RequestList from "../components/dashboard/RequestList";
 import StatsSidebar from "../components/dashboard/StatsSidebar";
 import SettingsModal from "../components/dashboard/SettingsModal";
+import LiveChat from "../components/dashboard/LiveChat"; // Added Import
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(false); // Mobile Chat State
 
   // Player State
   const [videoModalId, setVideoModalId] = useState(null); 
@@ -72,27 +74,20 @@ export default function Dashboard() {
     requests.find(r => r.id === playingRequestId), 
   [requests, playingRequestId]);
 
-  // --- FIXED: Next Song Logic (Now Loops) ---
+  // --- Next Song Logic ---
   const nextSong = useMemo(() => {
     if (!currentPlayingRequest) return null;
     
-    // 1. Get the active queue (Pending or Approved songs with a video ID)
     const queue = requests
         .filter(r => (r.status === 'pending' || r.status === 'approved') && r.youtube_video_id)
         .sort((a, b) => (a.position || 0) - (b.position || 0));
     
-    // If queue is empty, stop
     if (queue.length === 0) return null;
 
-    // 2. Find where we are currently
     const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
-    
-    // 3. Try to get the next song
     const next = queue[currentIndex + 1];
     
-    // 4. LOOP LOGIC: If 'next' doesn't exist (we are at the end), loop back to start
     return next || queue[0];
-
   }, [requests, currentPlayingRequest]);
 
 
@@ -104,25 +99,20 @@ export default function Dashboard() {
       
       setUser(data.user);
       
-      // Load Profile
       const { data: profile } = await supabase.from("dj_profiles").select("*").eq("id", data.user.id).single();
       if (profile) {
         setDjProfile(profile);
         if (profile.preferred_platform) setSelectedPlatform(profile.preferred_platform);
       }
 
-      // Load Requests (Initial) - ORDER BY POSITION
       const { data: reqs, error } = await supabase
         .from('requests')
         .select('*')
         .eq('dj_id', data.user.id)
         .order('position', { ascending: true });
       
-      if (reqs) {
-         setRequests(reqs);
-      } else {
-         console.error("Failed to load requests:", error);
-      }
+      if (reqs) setRequests(reqs);
+      else console.error("Failed to load requests:", error);
       
       setLoading(false);
     };
@@ -182,7 +172,6 @@ export default function Dashboard() {
     await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
   };
 
-  // --- DRAG AND DROP HANDLER ---
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
 
@@ -207,7 +196,6 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  // --- Player Logic ---
   const handlePlayRequest = (req, isInternalPlayer) => {
     if(isInternalPlayer && req.youtube_video_id) {
        setVideoModalId(req.youtube_video_id);
@@ -239,7 +227,6 @@ export default function Dashboard() {
 
 
   return (
-    // UPDATED: Added custom scrollbar styles to the main container
     <main 
       className="
         h-screen overflow-y-scroll 
@@ -291,6 +278,8 @@ export default function Dashboard() {
 
       {/* Main Container */}
       <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
+        
+        {/* Desktop Header */}
         <header className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
@@ -312,6 +301,8 @@ export default function Dashboard() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          
+          {/* LEFT SIDEBAR (Desktop Only) */}
           <div className="hidden lg:block lg:col-span-1">
              <StatsSidebar 
                stats={stats}
@@ -325,22 +316,73 @@ export default function Dashboard() {
              />
           </div>
 
-          <div className="lg:hidden mb-4">
-             <div className="p-4 bg-[#12121a] rounded-xl border border-white/5 flex justify-between items-center">
-                <span className="text-sm text-gray-400">Status</span>
-                <button onClick={toggleAccepting} className={`text-xs px-2 py-1 rounded ${djProfile?.accepting_requests ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                   {djProfile?.accepting_requests ? "Live" : "Paused"}
+          {/* MOBILE CONTROLS (Mobile Only) */}
+          <div className="lg:hidden space-y-4 mb-6">
+             {/* Row 1: Status & Platform */}
+             <div className="grid grid-cols-2 gap-3">
+                {/* Status Toggle */}
+                <button 
+                  onClick={toggleAccepting} 
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                    djProfile?.accepting_requests 
+                      ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                      : 'bg-red-500/10 border-red-500/20 text-red-400'
+                  }`}
+                >
+                   <Power size={14} />
+                   <span className="text-xs font-bold">{djProfile?.accepting_requests ? "Live" : "Paused"}</span>
                 </button>
+
+                {/* Platform Selector */}
+                <div className="relative bg-[#12121a] rounded-xl border border-white/5">
+                   <select 
+                      value={selectedPlatform}
+                      onChange={(e) => setSelectedPlatform(e.target.value)}
+                      className="w-full h-full bg-transparent text-gray-300 text-xs font-medium px-3 py-0 appearance-none outline-none"
+                   >
+                      {Object.entries(PLATFORMS).map(([key, config]) => (
+                        <option key={key} value={key}>{config.name}</option>
+                      ))}
+                   </select>
+                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <ExternalLink size={12} className="text-gray-500" />
+                   </div>
+                </div>
+             </div>
+
+             {/* Expandable Chat */}
+             <div className="bg-[#12121a] rounded-xl border border-white/5 overflow-hidden">
+                <button 
+                  onClick={() => setIsChatExpanded(!isChatExpanded)} 
+                  className="w-full p-4 flex justify-between items-center text-sm font-medium text-gray-300 bg-[#16161f]"
+                >
+                   <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-green-500/10 text-green-400">
+                        <MessageSquare size={14} />
+                      </div>
+                      <span>Live Text Feed</span>
+                   </div>
+                   {isChatExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                
+                {isChatExpanded && (
+                   <div className="border-t border-white/5 h-[350px]">
+                      {djProfile?.id && <LiveChat djId={djProfile.id} />}
+                   </div>
+                )}
              </div>
           </div>
 
+          {/* MAIN CONTENT AREA */}
           <div className="lg:col-span-3">
-             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+             
+             {/* Tabs - Fixed Horizontal Scrollbar */}
+             <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                 {TABS.map(tab => (
                   <button 
                     key={tab.key}
                     onClick={() => setFilterStatus(tab.key)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border flex-shrink-0 ${
                       filterStatus === tab.key 
                       ? "bg-white/10 border-white/20 text-white" 
                       : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
@@ -352,7 +394,7 @@ export default function Dashboard() {
                 <button 
                   onClick={clearAllFiltered} 
                   disabled={filteredRequests.length === 0}
-                  className={`ml-auto px-3 py-2 rounded-lg transition-colors ${
+                  className={`ml-auto px-3 py-2 rounded-lg transition-colors flex-shrink-0 ${
                     filteredRequests.length > 0 
                       ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' 
                       : 'bg-transparent text-transparent pointer-events-none' 
