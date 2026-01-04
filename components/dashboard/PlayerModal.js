@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { 
   Play, Pause, Volume2, VolumeX, SkipForward, 
   ThumbsUp, Check, Minimize2, Maximize2, X, Music, Ban,
-  Lock, Unlock // Added Icons
+  Lock, Unlock 
 } from "lucide-react";
 
 const PLAYER_ID = "youtube-player-persistence";
@@ -61,27 +61,26 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
-  // 1. MUTE SYNC: Poll the YouTube player to see if user used the native embed mute button
+  // 1. MUTE SYNC
   useEffect(() => {
     const interval = setInterval(() => {
         if (playerRef.current && typeof playerRef.current.isMuted === 'function') {
             const playerMuted = playerRef.current.isMuted();
-            // If API says muted, but React says unmuted (or vice versa), sync it up
             if (playerMuted !== isMuted) {
                 onToggleMute();
             }
         }
-    }, 500); // Check every half second
+    }, 500); 
 
     return () => clearInterval(interval);
   }, [isMuted, onToggleMute]);
 
-  // 2. LOCK LOGIC: If Locked, force minimize when videoId changes
+  // 2. LOCK LOGIC
   useEffect(() => {
     if (isLocked) {
         onMinimize();
     }
-  }, [videoId]); // Only triggers when the song changes
+  }, [videoId]);
 
   // Main Player Logic
   useEffect(() => {
@@ -225,16 +224,19 @@ export default function PlayerModal({
     onSkip();
   };
   
-  // Toggle Lock State Handler
   const toggleLock = (e) => {
-      e.stopPropagation(); // Don't trigger maximize
+      e.stopPropagation();
       setIsLocked(!isLocked);
   };
   
+  // FIX: Updated logic to include 'Clean' and handle styling
   let tagsToDisplay = [];
   if (request) {
       tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
-      if (request.explicit === 'Explicit') tagsToDisplay.push('Explicit');
+      // Logic: Allow BOTH "Explicit" and "Clean"
+      if (request.explicit) {
+          tagsToDisplay.push(request.explicit);
+      }
   }
 
   if (!videoId || !request) return null;
@@ -301,8 +303,17 @@ export default function PlayerModal({
                             {request.status}
                           </div>
                           <div className="hidden sm:block h-4 w-[1px] bg-white/10 mx-1"></div>
+                          
+                          {/* FIX: Dynamic Tag Styling */}
                           {tagsToDisplay.map(tag => (
-                             <span key={tag} className="px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-300 border border-white/5">
+                             <span 
+                                key={tag} 
+                                className={`px-2.5 py-1 rounded-md text-xs font-medium border border-white/5 ${
+                                    tag === 'Explicit' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
+                                    tag === 'Clean' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                                    'bg-white/5 text-gray-300'
+                                }`}
+                             >
                                 {tag}
                              </span>
                           ))}
