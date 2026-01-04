@@ -30,14 +30,12 @@ export default function RequestItem({
   const handleBanUser = async () => {
     if (!confirm(`Are you sure you want to BAN ${req.requestedBy}? They will no longer be able to request songs.`)) return;
     
-    // Call the API
     await fetch("/api/blacklist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dj_id: req.dj_id, phone_number: req.requestedBy })
     });
     
-    // Auto-reject this request to clear it
     onUpdateStatus(req.id, "rejected");
     alert("User has been banned.");
   };
@@ -68,10 +66,14 @@ export default function RequestItem({
                <GripVertical size={16} />
             </div>
 
-            {/* Thumbnail */}
+            {/* Thumbnail - FIXED: Added scale-[1.35] to crop YouTube black bars */}
             <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden bg-white/5 flex-shrink-0 group/thumb">
               {req.thumbnail ? (
-                <img src={req.thumbnail} alt={req.title} className="w-full h-full object-cover" />
+                <img 
+                  src={req.thumbnail} 
+                  alt={req.title} 
+                  className="w-full h-full object-cover scale-[1.35]" 
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Music size={20} className="text-gray-600" />
@@ -119,7 +121,6 @@ export default function RequestItem({
                   <p className="text-xs sm:text-sm text-gray-400 truncate">{req.artist}</p>
                 </div>
                 
-                {/* Status Badge */}
                 <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
                   isCurrentlyPlaying ? "bg-pink-500/20 text-pink-400" : 
                   isPlayedStatus ? "bg-green-500/10 text-green-400" : 
@@ -133,19 +134,15 @@ export default function RequestItem({
 
               {/* Metadata */}
               <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] sm:text-xs text-gray-500 flex-wrap">
-                {/* EXPLICIT TAG */}
                 {req.explicit === "Explicit" && (
                   <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Explicit</span>
                 )}
-                
-                {/* CLEAN TAG */}
                 {req.explicit === "Clean" && (
                   <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Clean</span>
                 )}
 
                 <div className="flex items-center gap-1">
                   <User size={10} />
-                  {/* CLICK TO BAN BUTTON */}
                   <button 
                     onClick={handleBanUser}
                     className="truncate max-w-[80px] sm:max-w-none hover:text-red-400 hover:underline transition-colors flex items-center gap-1"

@@ -41,8 +41,6 @@ export default function PlayerModal({
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isFirstSong, setIsFirstSong] = useState(true);
-  
-  // NEW STATE: Locks the player in minimized mode
   const [isLocked, setIsLocked] = useState(false); 
   
   const onVideoEndRef = useRef(onVideoEnd);
@@ -61,7 +59,6 @@ export default function PlayerModal({
     loadYoutubeScript();
   }, []);
 
-  // 1. MUTE SYNC
   useEffect(() => {
     const interval = setInterval(() => {
         if (playerRef.current && typeof playerRef.current.isMuted === 'function') {
@@ -75,14 +72,12 @@ export default function PlayerModal({
     return () => clearInterval(interval);
   }, [isMuted, onToggleMute]);
 
-  // 2. LOCK LOGIC
   useEffect(() => {
     if (isLocked) {
         onMinimize();
     }
-  }, [videoId]);
+  }, [videoId]); 
 
-  // Main Player Logic
   useEffect(() => {
     if (!videoId) {
         setIsFirstSong(true);
@@ -183,7 +178,6 @@ export default function PlayerModal({
     };
   }, [videoId]); 
 
-  // React Mute Logic (Outgoing)
   useEffect(() => {
     if (!playerRef.current?.mute) return;
     try {
@@ -225,18 +219,14 @@ export default function PlayerModal({
   };
   
   const toggleLock = (e) => {
-      e.stopPropagation();
+      e.stopPropagation(); 
       setIsLocked(!isLocked);
   };
   
-  // FIX: Updated logic to include 'Clean' and handle styling
   let tagsToDisplay = [];
   if (request) {
       tagsToDisplay = [request.genre, request.mood, request.energy].filter(Boolean);
-      // Logic: Allow BOTH "Explicit" and "Clean"
-      if (request.explicit) {
-          tagsToDisplay.push(request.explicit);
-      }
+      if (request.explicit === 'Explicit') tagsToDisplay.push('Explicit');
   }
 
   if (!videoId || !request) return null;
@@ -303,17 +293,8 @@ export default function PlayerModal({
                             {request.status}
                           </div>
                           <div className="hidden sm:block h-4 w-[1px] bg-white/10 mx-1"></div>
-                          
-                          {/* FIX: Dynamic Tag Styling */}
                           {tagsToDisplay.map(tag => (
-                             <span 
-                                key={tag} 
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium border border-white/5 ${
-                                    tag === 'Explicit' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
-                                    tag === 'Clean' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
-                                    'bg-white/5 text-gray-300'
-                                }`}
-                             >
+                             <span key={tag} className="px-2.5 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-300 border border-white/5">
                                 {tag}
                              </span>
                           ))}
@@ -387,14 +368,17 @@ export default function PlayerModal({
             </div>
         )}
 
-        {/* Minimized Player UI */}
+        {/* Minimized Player UI - FIXED THUMBNAIL */}
         {isMinimized && request && (
           <div className="flex items-center p-3 w-full bg-[#12121a] border-t border-white/10">
-            {/* Click to Maximize Area */}
             <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0 group" onClick={onMaximize}>
               <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative ${isPlaying ? 'bg-gray-800' : 'bg-gray-900'}`}>
                  {request.thumbnail ? (
-                     <img src={request.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
+                     <img 
+                       src={request.thumbnail} 
+                       alt="Thumbnail" 
+                       className="w-full h-full object-cover scale-[1.35]" // Added Scale
+                     />
                  ) : (
                      <Music size={20} className="text-gray-600" />
                  )}
@@ -410,7 +394,6 @@ export default function PlayerModal({
             
             {/* Minimized Controls */}
             <div className="flex items-center gap-1 ml-4 flex-shrink-0">
-               {/* Lock Toggle */}
                <button 
                  onClick={toggleLock} 
                  className={`p-2 rounded-lg transition-colors mr-2 ${isLocked ? "bg-pink-500/20 text-pink-400" : "text-gray-500 hover:bg-white/5"}`}
@@ -427,7 +410,6 @@ export default function PlayerModal({
                 <SkipForward size={18} />
               </button>
               
-              {/* Maximize Button */}
               <button onClick={onMaximize} className="p-2 hover:bg-white/10 text-gray-300 rounded-lg ml-1" title="Maximize">
                 <Maximize2 size={18} />
               </button>
