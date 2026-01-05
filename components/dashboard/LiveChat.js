@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Mic, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
+import { MessageSquare, User, Mic, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
 // REPLACE WITH YOUR NEW WORKFLOW URL
 const N8N_REPLY_WEBHOOK = "/api/reply";
@@ -88,26 +88,9 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
+           // Prevent duplicates if we already added it locally
            setMessages((prev) => {
-             // 1. Prevent exact duplicates (ID match)
              if (prev.some(m => m.id === payload.new.id)) return prev;
-
-             // 2. SMART SWAP: Check if this "New" message is actually the "Temp" message we just added
-             // We match by: ID starts with "temp-", same sender, same text.
-             const tempMatchIndex = prev.findIndex(m => 
-                m.id.startsWith("temp-") && 
-                m.sender_number === payload.new.sender_number &&
-                m.reply_body === payload.new.reply_body
-             );
-
-             if (tempMatchIndex !== -1) {
-                // Swap the temp message for the real one (so it turns green/confirmed if we had status)
-                const newMessages = [...prev];
-                newMessages[tempMatchIndex] = payload.new;
-                return newMessages;
-             }
-
-             // 3. If no match, it's a new message from someone else
              return [...prev, payload.new];
            });
         }
@@ -144,24 +127,11 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
       const textToSend = replyText;
-      
-      // 1. OPTIMISTIC UPDATE (Show it NOW, don't wait for DB)
-      const tempId = "temp-" + Date.now();
-      const optimisticMsg = {
-          id: tempId,
-          dj_id: djId,
-          sender_number: phoneNumber,
-          message_body: "(Reply)", // This triggers the Mic Icon logic
-          reply_body: textToSend,
-          created_at: new Date().toISOString()
-      };
-      
-      setMessages(prev => [...prev, optimisticMsg]);
-      setReplyText(""); 
+      setReplyText(""); // Clear input immediately
       setReplyingTo(null);
 
       try {
-          // 2. SAVE TO DB (Persist)
+          // 1. SAVE TO DB FIRST (Guarantees it persists on refresh)
           const { error: dbError } = await supabase.from('messages').insert({
               dj_id: djId,
               sender_number: phoneNumber,
@@ -171,7 +141,7 @@ export default function LiveChat({
 
           if (dbError) throw dbError;
 
-          // 3. SEND SMS via n8n
+          // 2. SEND SMS via n8n
           const res = await fetch(N8N_REPLY_WEBHOOK, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -184,15 +154,12 @@ export default function LiveChat({
           
           const result = await res.json();
           if (!result.success) {
-              // If blocked, remove the optimistic message so user knows it failed
-              setMessages(prev => prev.filter(m => m.id !== tempId));
-              alert("Message Blocked: " + (result.error || "Safety Filter"));
+              alert("Message Blocked by Safety Filter: " + (result.error || "Unknown"));
           } 
 
       } catch (e) {
           console.error(e);
-          setMessages(prev => prev.filter(m => m.id !== tempId)); // Undo on error
-          alert("Failed to send reply.");
+          alert("Failed to send reply. Please try again.");
       } finally {
           setSendingReply(false);
       }
@@ -233,14 +200,13 @@ export default function LiveChat({
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
             
-            // LOGIC: Differentiates Manual Replies vs Auto Bots
-            const isManualReply = msg.message_body === "(Reply)";
+            const isSystemReply = msg.message_body === "(Reply)";
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a manual DJ reply) */}
-                {!isManualReply && (
+                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
+                {!isSystemReply && (
                   <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                     <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2">
@@ -320,19 +286,14 @@ export default function LiveChat({
                   </div>
                 )}
 
-                {/* 2. SYSTEM REPLY (Bot or DJ) */}
+                {/* 2. DJ REPLY (Always show if exists) */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2 flex-row-reverse">
-                        
-                        {/* ICON: Mic if Manual, Bot if Auto */}
+                        {/* CHANGED ICON TO MIC */}
                         <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                          {isManualReply ? (
-                             <Mic size={12} className="text-purple-400" />
-                          ) : (
-                             <Bot size={12} className="text-purple-400" />
-                          )}
+                          <Mic size={12} className="text-purple-400" />
                         </div>
                         
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
@@ -349,8 +310,8 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* LABEL: Only show "DJ -> Number" if it was a manual reply */}
-                      {isManualReply && (
+                      {/* CHANGED LABEL TO 'DJ' */}
+                      {isSystemReply && (
                         <div className="flex justify-end mt-1 mr-8">
                            <p className="text-[10px] text-gray-500">
                               DJ ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
