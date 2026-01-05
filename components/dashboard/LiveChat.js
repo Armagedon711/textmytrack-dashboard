@@ -105,10 +105,10 @@ export default function LiveChat({
         </div>
       )}
 
-      {/* FIX: Added overflow-x-hidden and custom scrollbar styles */}
+      {/* FIX: Increased bottom padding (pb-20) to prevent cutoff on mobile */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4
+        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-20 space-y-4
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10

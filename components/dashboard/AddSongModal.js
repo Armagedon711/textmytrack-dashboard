@@ -14,7 +14,7 @@ export default function AddSongModal({ isOpen, onClose, djId }) {
     setLoading(true);
 
     try {
-      // REPLACE THIS URL with the "Production URL" from the new n8n workflow below
+      // REPLACE THIS URL with the "Production URL" from the new n8n workflow
       const N8N_WEBHOOK_URL = "https://n8n.theprotoforge.com/webhook/manual-add"; 
 
       await fetch(N8N_WEBHOOK_URL, {
@@ -38,7 +38,11 @@ export default function AddSongModal({ isOpen, onClose, djId }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // FIX: Changed 'items-center' to 'items-start pt-20' for mobile
+    // This keeps the modal at the top so the keyboard doesn't cover it.
+    // 'md:items-center' restores the centered look on desktop.
+    <div className="fixed inset-0 z-50 flex items-start md:items-center justify-center p-4 pt-20 md:pt-4">
+      
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       
       <div className="relative w-full max-w-md bg-[#12121a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
