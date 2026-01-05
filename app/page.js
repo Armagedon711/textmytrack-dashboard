@@ -93,8 +93,10 @@ export default function Dashboard() {
   const nextSong = useMemo(() => {
     if (!currentPlayingRequest) return null;
     
+    // FIX: Only include 'approved' songs in the auto-play queue.
+    // Removed "r.status === 'pending'" so it never auto-plays unapproved requests.
     const queue = requests
-        .filter(r => (r.status === 'pending' || r.status === 'approved') && r.youtube_video_id)
+        .filter(r => r.status === 'approved' && r.youtube_video_id)
         .sort((a, b) => (a.position || 0) - (b.position || 0));
     
     if (queue.length === 0) return null;
@@ -102,6 +104,7 @@ export default function Dashboard() {
     const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
     const next = queue[currentIndex + 1];
     
+    // Loop back to start if at end, or play first if current not found (e.g. was just marked played)
     return next || queue[0];
   }, [requests, currentPlayingRequest]);
 
