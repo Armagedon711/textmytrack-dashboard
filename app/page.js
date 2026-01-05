@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink } from "lucide-react";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
@@ -12,6 +12,7 @@ import RequestList from "../components/dashboard/RequestList";
 import StatsSidebar from "../components/dashboard/StatsSidebar";
 import SettingsModal from "../components/dashboard/SettingsModal";
 import LiveChat from "../components/dashboard/LiveChat"; 
+import AddSongModal from "../components/dashboard/AddSongModal"; // <--- NEW IMPORT
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
+  const [showAddSong, setShowAddSong] = useState(false); // <--- NEW STATE
   const [isChatExpanded, setIsChatExpanded] = useState(false); 
 
   // Player State
@@ -250,6 +252,13 @@ export default function Dashboard() {
         universalNumber={UNIVERSAL_NUMBER}
       />
 
+      {/* --- ADD SONG MODAL --- */}
+      <AddSongModal 
+        isOpen={showAddSong}
+        onClose={() => setShowAddSong(false)}
+        djId={user?.id}
+      />
+
       <PlayerModal 
         videoId={videoModalId}
         request={currentPlayingRequest}
@@ -290,6 +299,15 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex gap-2">
+            
+            {/* --- ADD SONG BUTTON --- */}
+            <button 
+              onClick={() => setShowAddSong(true)} 
+              className="p-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg shadow-lg shadow-pink-900/20 flex items-center gap-2 transition-all"
+            >
+              <Plus size={18} /> <span className="hidden sm:block font-bold">Add Song</span>
+            </button>
+
             <button onClick={() => setShowSettings(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
               <Settings size={18} /> <span className="hidden sm:block">Settings</span>
             </button>
