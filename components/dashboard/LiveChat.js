@@ -88,9 +88,26 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
-           // Prevent duplicates if we already added it locally
            setMessages((prev) => {
+             // 1. Prevent exact duplicates (ID match)
              if (prev.some(m => m.id === payload.new.id)) return prev;
+
+             // 2. SMART SWAP: Check if this "New" message is actually the "Temp" message we just added
+             // We match by: ID starts with "temp-", same sender, same text.
+             const tempMatchIndex = prev.findIndex(m => 
+                m.id.startsWith("temp-") && 
+                m.sender_number === payload.new.sender_number &&
+                m.reply_body === payload.new.reply_body
+             );
+
+             if (tempMatchIndex !== -1) {
+                // Swap the temp message for the real one (so it turns green/confirmed if we had status)
+                const newMessages = [...prev];
+                newMessages[tempMatchIndex] = payload.new;
+                return newMessages;
+             }
+
+             // 3. If no match, it's a new message from someone else
              return [...prev, payload.new];
            });
         }
@@ -127,11 +144,24 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
       const textToSend = replyText;
-      setReplyText(""); // Clear input immediately
+      
+      // 1. OPTIMISTIC UPDATE (Show it NOW, don't wait for DB)
+      const tempId = "temp-" + Date.now();
+      const optimisticMsg = {
+          id: tempId,
+          dj_id: djId,
+          sender_number: phoneNumber,
+          message_body: "(Reply)", // This triggers the Mic Icon logic
+          reply_body: textToSend,
+          created_at: new Date().toISOString()
+      };
+      
+      setMessages(prev => [...prev, optimisticMsg]);
+      setReplyText(""); 
       setReplyingTo(null);
 
       try {
-          // 1. SAVE TO DB FIRST (Guarantees it persists on refresh)
+          // 2. SAVE TO DB (Persist)
           const { error: dbError } = await supabase.from('messages').insert({
               dj_id: djId,
               sender_number: phoneNumber,
@@ -141,7 +171,7 @@ export default function LiveChat({
 
           if (dbError) throw dbError;
 
-          // 2. SEND SMS via n8n
+          // 3. SEND SMS via n8n
           const res = await fetch(N8N_REPLY_WEBHOOK, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -154,12 +184,15 @@ export default function LiveChat({
           
           const result = await res.json();
           if (!result.success) {
-              alert("Message Blocked by Safety Filter: " + (result.error || "Unknown"));
+              // If blocked, remove the optimistic message so user knows it failed
+              setMessages(prev => prev.filter(m => m.id !== tempId));
+              alert("Message Blocked: " + (result.error || "Safety Filter"));
           } 
 
       } catch (e) {
           console.error(e);
-          alert("Failed to send reply. Please try again.");
+          setMessages(prev => prev.filter(m => m.id !== tempId)); // Undo on error
+          alert("Failed to send reply.");
       } finally {
           setSendingReply(false);
       }
@@ -200,8 +233,7 @@ export default function LiveChat({
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
             
-            // LOGIC: If message_body is "(Reply)", it's a manual DJ reply.
-            // Otherwise, it's an automated bot message (referencing a user request).
+            // LOGIC: Differentiates Manual Replies vs Auto Bots
             const isManualReply = msg.message_body === "(Reply)";
 
             return (
