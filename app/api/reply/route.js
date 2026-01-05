@@ -6,7 +6,7 @@ export async function POST(req) {
     console.log("1. Sending to n8n:", body);
 
     // FIX: Changed 'webhook-test' to 'webhook' (Production URL)
-    const response = await fetch("https://n8n.theprotoforge.com/webhook/dj-reply", {
+    const response = await fetch("https://n8n.theprotoforge.com/webhook-test/dj-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
