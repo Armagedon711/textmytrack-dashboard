@@ -127,7 +127,7 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
       const textToSend = replyText;
-      setReplyText(""); // Clear input immediately for better UX
+      setReplyText(""); // Clear input immediately
       setReplyingTo(null);
 
       try {
