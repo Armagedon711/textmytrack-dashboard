@@ -55,7 +55,7 @@ export default function LiveChat({
     if (scrollRef.current) {
       setTimeout(() => {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }, 50); // Small delay to allow DOM to render
+      }, 50); 
     }
   };
 
@@ -88,10 +88,27 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
-          // Prevent duplicates from optimistic updates
           setMessages((prev) => {
-             const exists = prev.some(m => m.id === payload.new.id);
-             if (exists) return prev;
+             // 1. Check if exact ID exists (Dedupe)
+             if (prev.some(m => m.id === payload.new.id)) return prev;
+
+             // 2. CHECK FOR TEMP MESSAGE TO REPLACE
+             // We look for a message that starts with "temp-", matches the phone number, 
+             // and matches the content.
+             const tempMatchIndex = prev.findIndex(m => 
+                m.id.startsWith("temp-") && 
+                m.sender_number === payload.new.sender_number &&
+                m.reply_body === payload.new.reply_body
+             );
+
+             if (tempMatchIndex !== -1) {
+                // Replace the temporary message with the real one
+                const newMessages = [...prev];
+                newMessages[tempMatchIndex] = payload.new;
+                return newMessages;
+             }
+
+             // 3. Otherwise add as new
              return [...prev, payload.new];
           });
         }
@@ -156,11 +173,10 @@ export default function LiveChat({
           
           const result = await res.json();
           if (!result.success) {
+              // If failed, remove the temp message
               setMessages(prev => prev.filter(m => m.id !== tempId));
               alert("Message Blocked: " + (result.error || "Safety Filter Triggered"));
           } 
-          // If success, we keep the temp message until Supabase real-time potentially replaces it
-          // or we can filter it out later. For now, keeping it ensures it stays on screen.
       } catch (e) {
           setMessages(prev => prev.filter(m => m.id !== tempId));
           alert("Failed to send reply");
@@ -204,13 +220,11 @@ export default function LiveChat({
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
             
-            // CHECK: Is this purely a bot reply (User message is just "(Reply)")?
             const isSystemReply = msg.message_body === "(Reply)";
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
                 {!isSystemReply && (
                   <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                     <div className="max-w-[90%] sm:max-w-[85%]">
@@ -291,7 +305,7 @@ export default function LiveChat({
                   </div>
                 )}
 
-                {/* 2. BOT REPLY (Always show if exists) */}
+                {/* BOT REPLY */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[90%] sm:max-w-[85%]">
@@ -314,7 +328,6 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* SYSTEM REPLY INFO ROW - shows WHO we replied to */}
                       {isSystemReply && (
                         <div className="flex justify-end mt-1 mr-8">
                            <p className="text-[10px] text-gray-500">
