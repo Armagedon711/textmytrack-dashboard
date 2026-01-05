@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus } from "lucide-react";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components
@@ -12,7 +12,7 @@ import RequestList from "../components/dashboard/RequestList";
 import StatsSidebar from "../components/dashboard/StatsSidebar";
 import SettingsModal from "../components/dashboard/SettingsModal";
 import LiveChat from "../components/dashboard/LiveChat"; 
-import AddSongModal from "../components/dashboard/AddSongModal"; // <--- NEW IMPORT
+import AddSongModal from "../components/dashboard/AddSongModal"; 
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
@@ -30,6 +30,20 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
+// Helper to format phone numbers
+const formatPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return "...";
+  let cleaned = ('' + phoneNumber).replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      cleaned = cleaned.substring(1);
+  }
+  const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+  if (match) {
+    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+  }
+  return phoneNumber;
+};
+
 export default function Dashboard() {
   const supabase = supabaseBrowserClient();
   const router = useRouter();
@@ -44,7 +58,7 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
-  const [showAddSong, setShowAddSong] = useState(false); // <--- NEW STATE
+  const [showAddSong, setShowAddSong] = useState(false); 
   const [isChatExpanded, setIsChatExpanded] = useState(false); 
 
   // Player State
@@ -365,6 +379,25 @@ export default function Dashboard() {
                       <ChevronDown size={14} className="text-gray-500" />
                    </div>
                 </div>
+             </div>
+
+             {/* Row 2: MOBILE REQUEST NUMBER DISPLAY */}
+             <div className="bg-[#12121a] rounded-xl border border-white/5 p-4 flex items-center justify-center text-center">
+                 <div className="flex flex-col items-center">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1">Text Requests To</p>
+                    <div className="flex items-center gap-2">
+                       <Phone size={14} className="text-pink-400" />
+                       {djProfile?.plan?.toLowerCase() === "headliner" ? (
+                          <span className="text-lg font-bold text-white tracking-wide">
+                            {formatPhoneNumber(djProfile?.twilio_number)}
+                          </span>
+                       ) : (
+                          <span className="text-sm text-gray-300">
+                             <span className="font-bold text-pink-400 text-base">{djProfile?.tag || "..."}</span> to <span className="font-bold text-white">{formatPhoneNumber(UNIVERSAL_NUMBER)}</span>
+                          </span>
+                       )}
+                    </div>
+                 </div>
              </div>
 
              {/* Expandable Chat */}
