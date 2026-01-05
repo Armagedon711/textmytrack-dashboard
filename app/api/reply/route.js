@@ -6,7 +6,7 @@ export async function POST(req) {
     console.log("1. Sending to n8n:", body); // DEBUG LOG
 
     // Send the data to your n8n workflow
-    const response = await fetch("https://n8n.theprotoforge.com/webhook/dj-reply", {
+    const response = await fetch("https://n8n.theprotoforge.com/webhook-test/dj-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
