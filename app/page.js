@@ -93,8 +93,6 @@ export default function Dashboard() {
   const nextSong = useMemo(() => {
     if (!currentPlayingRequest) return null;
     
-    // FIX: Only include 'approved' songs in the auto-play queue.
-    // Removed "r.status === 'pending'" so it never auto-plays unapproved requests.
     const queue = requests
         .filter(r => r.status === 'approved' && r.youtube_video_id)
         .sort((a, b) => (a.position || 0) - (b.position || 0));
@@ -104,37 +102,61 @@ export default function Dashboard() {
     const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
     const next = queue[currentIndex + 1];
     
-    // Loop back to start if at end, or play first if current not found (e.g. was just marked played)
     return next || queue[0];
   }, [requests, currentPlayingRequest]);
 
 
   // --- Data Loading & Auth ---
   useEffect(() => {
+    let mounted = true;
+
     const init = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data?.user) return router.push("/login");
+      // 1. Initial Session Check
+      const { data: { session }, error } = await supabase.auth.getSession();
       
-      setUser(data.user);
+      if (error || !session) {
+        if (mounted) router.push("/login");
+        return;
+      }
       
-      const { data: profile } = await supabase.from("dj_profiles").select("*").eq("id", data.user.id).single();
-      if (profile) {
+      if (mounted) setUser(session.user);
+      
+      // 2. Load Profile
+      const { data: profile } = await supabase.from("dj_profiles").select("*").eq("id", session.user.id).single();
+      if (profile && mounted) {
         setDjProfile(profile);
         if (profile.preferred_platform) setSelectedPlatform(profile.preferred_platform);
       }
 
-      const { data: reqs, error } = await supabase
+      // 3. Load Requests
+      const { data: reqs } = await supabase
         .from('requests')
         .select('*')
-        .eq('dj_id', data.user.id)
+        .eq('dj_id', session.user.id)
         .order('position', { ascending: true });
       
-      if (reqs) setRequests(reqs);
-      else console.error("Failed to load requests:", error);
+      if (reqs && mounted) setRequests(reqs);
       
-      setLoading(false);
+      if (mounted) setLoading(false);
     };
+
     init();
+
+    // 4. AUTH STATE LISTENER (Fixes Auto-Logout Issues)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.push("/login");
+        setUser(null);
+      } else if (session?.user) {
+        // If token refreshes, update the user state silently
+        setUser(session.user);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
 
