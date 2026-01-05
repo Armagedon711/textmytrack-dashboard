@@ -4,8 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { MessageSquare, User, Bot, Loader2, Ban, Trash2 } from "lucide-react";
 
-// --- 1. COLOR UTILITY ---
-// Define a palette of readable colors
+// --- 1. USER COLOR GENERATOR ---
 const USER_COLORS = [
   { bg: "bg-blue-500/20", text: "text-blue-400" },
   { bg: "bg-green-500/20", text: "text-green-400" },
@@ -17,7 +16,6 @@ const USER_COLORS = [
   { bg: "bg-rose-500/20", text: "text-rose-400" },
 ];
 
-// Consistent hash function: Same phone number = Same color always
 const getUserColor = (phone) => {
   if (!phone) return USER_COLORS[0];
   let hash = 0;
@@ -73,6 +71,7 @@ export default function LiveChat({
           setTimeout(scrollToBottom, 100);
         }
       )
+      // Listen for updates (like when we manually insert a retraction)
       .on(
         "postgres_changes", 
         { event: "UPDATE", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
@@ -109,12 +108,7 @@ export default function LiveChat({
 
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto px-4 pt-4 pb-8 space-y-4 pr-2
-          [&::-webkit-scrollbar]:w-1.5
-          [&::-webkit-scrollbar-track]:bg-transparent
-          [&::-webkit-scrollbar-thumb]:bg-white/10
-          [&::-webkit-scrollbar-thumb]:rounded-full
-          hover:[&::-webkit-scrollbar-thumb]:bg-white/20"
+        className="flex-1 overflow-y-auto px-4 pt-4 pb-8 space-y-4 pr-2 scrollbar-hide"
       >
         {loading ? (
           <div className="flex items-center justify-center h-full text-gray-500">
@@ -123,25 +117,20 @@ export default function LiveChat({
         ) : messages.length === 0 ? (
           <div className="text-center text-gray-600 text-xs mt-10">
             <p>No messages yet.</p>
-            <p className="mt-1">Texts sent to your number will appear here.</p>
           </div>
         ) : (
           messages.map((msg) => {
-            // Get consistent color for this user
             const userColor = getUserColor(msg.sender_number);
-            
-            // --- 2. DETECT RETRACTION ---
-            // Check if the bot reply contains the specific phrase from your n8n workflow
-            const isRetraction = msg.reply_body && msg.reply_body.includes("I've removed");
+            // CHECK FOR RETRACTION PHRASE
+            const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* Incoming User Message (Left) */}
+                {/* Incoming Message */}
                 <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="max-w-[85%]">
                     <div className="flex items-end gap-2">
-                      {/* Randomized User Icon Color */}
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${userColor.bg}`}>
                         <User size={12} className={userColor.text} />
                       </div>
@@ -165,7 +154,7 @@ export default function LiveChat({
                   </div>
                 </div>
 
-                {/* Outgoing Bot Reply (Right) */}
+                {/* Bot Reply */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[85%]">
@@ -174,13 +163,11 @@ export default function LiveChat({
                           <Bot size={12} className="text-purple-400" />
                         </div>
                         
-                        {/* --- RETRACTION STYLING --- 
-                           If it's a retraction, turn the bubble RED/PINK 
-                        */}
+                        {/* RETRACTION HIGHLIGHT */}
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
                           isRetraction 
-                            ? "bg-red-500/10 border-red-500/20" // Retraction Style
-                            : "bg-purple-500/10 border-purple-500/20" // Normal Style
+                            ? "bg-red-500/10 border-red-500/20" 
+                            : "bg-purple-500/10 border-purple-500/20"
                         }`}>
                           <p className={`text-xs sm:text-sm break-words leading-relaxed flex items-center gap-2 ${
                             isRetraction ? "text-red-200" : "text-purple-100"
