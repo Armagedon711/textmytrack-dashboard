@@ -111,7 +111,7 @@ export default function LiveChat({
       */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-8 lg:pb-4 space-y-4
+        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-10 lg:pb-4 space-y-4
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10
