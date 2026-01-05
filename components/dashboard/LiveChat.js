@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Mic, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
+import { MessageSquare, User, Mic, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
 // REPLACE WITH YOUR NEW WORKFLOW URL
 const N8N_REPLY_WEBHOOK = "/api/reply";
@@ -67,15 +67,16 @@ export default function LiveChat({
     if (!djId) return;
 
     const fetchMessages = async () => {
+      // FIXED: Fetch NEWEST messages first (descending), then reverse them for display
       const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("dj_id", djId)
-        .order("created_at", { ascending: true }) 
+        .order("created_at", { ascending: false }) // <--- CHANGE: Get newest first
         .limit(50); 
 
       if (data) {
-        setMessages(data);
+        setMessages(data.reverse()); // <--- CHANGE: Reverse to show chronologically
       }
       setLoading(false);
     };
@@ -88,9 +89,21 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
-           // Prevent duplicates if we already added it locally
            setMessages((prev) => {
              if (prev.some(m => m.id === payload.new.id)) return prev;
+
+             // SMART SWAP: Check if this "New" message is actually the "Temp" message
+             const tempMatchIndex = prev.findIndex(m => 
+                m.id.startsWith("temp-") && 
+                m.sender_number === payload.new.sender_number &&
+                m.reply_body === payload.new.reply_body
+             );
+
+             if (tempMatchIndex !== -1) {
+                const newMessages = [...prev];
+                newMessages[tempMatchIndex] = payload.new;
+                return newMessages;
+             }
              return [...prev, payload.new];
            });
         }
@@ -127,11 +140,24 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
       const textToSend = replyText;
-      setReplyText(""); // Clear input immediately
+      
+      // 1. OPTIMISTIC UPDATE
+      const tempId = "temp-" + Date.now();
+      const optimisticMsg = {
+          id: tempId,
+          dj_id: djId,
+          sender_number: phoneNumber,
+          message_body: "(Reply)",
+          reply_body: textToSend,
+          created_at: new Date().toISOString()
+      };
+      
+      setMessages(prev => [...prev, optimisticMsg]);
+      setReplyText(""); 
       setReplyingTo(null);
 
       try {
-          // 1. SAVE TO DB FIRST (Guarantees it persists on refresh)
+          // 2. SAVE TO DB
           const { error: dbError } = await supabase.from('messages').insert({
               dj_id: djId,
               sender_number: phoneNumber,
@@ -141,7 +167,7 @@ export default function LiveChat({
 
           if (dbError) throw dbError;
 
-          // 2. SEND SMS via n8n
+          // 3. SEND SMS via n8n
           const res = await fetch(N8N_REPLY_WEBHOOK, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -154,12 +180,14 @@ export default function LiveChat({
           
           const result = await res.json();
           if (!result.success) {
-              alert("Message Blocked by Safety Filter: " + (result.error || "Unknown"));
+              setMessages(prev => prev.filter(m => m.id !== tempId));
+              alert("Message Blocked: " + (result.error || "Safety Filter"));
           } 
 
       } catch (e) {
           console.error(e);
-          alert("Failed to send reply. Please try again.");
+          setMessages(prev => prev.filter(m => m.id !== tempId));
+          alert("Failed to send reply.");
       } finally {
           setSendingReply(false);
       }
@@ -200,13 +228,12 @@ export default function LiveChat({
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
             
-            const isSystemReply = msg.message_body === "(Reply)";
+            const isManualReply = msg.message_body === "(Reply)";
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
-                {!isSystemReply && (
+                {!isManualReply && (
                   <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                     <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2">
@@ -218,8 +245,6 @@ export default function LiveChat({
                           <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2">
                             <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
                           </div>
-
-                          {/* Desktop Reply Button */}
                           {showReplyBtn && (
                               <button 
                                   onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
@@ -232,14 +257,12 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* User Info Row */}
                       <div className="flex items-center gap-3 mt-1.5 ml-8">
                           <p className="text-[10px] text-gray-600">
                             {formatPhoneNumber(msg.sender_number)} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </p>
                           
                           <div className="flex items-center gap-2">
-                              {/* Mobile Reply Button */}
                               {showReplyBtn && (
                                   <button 
                                       onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
@@ -257,7 +280,6 @@ export default function LiveChat({
                           </div>
                       </div>
 
-                      {/* Reply Input */}
                       {replyingTo === msg.id && (
                           <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2 bg-[#16161f] p-2 rounded-lg border border-white/10">
                               <input 
@@ -286,14 +308,16 @@ export default function LiveChat({
                   </div>
                 )}
 
-                {/* 2. DJ REPLY (Always show if exists) */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2 flex-row-reverse">
-                        {/* CHANGED ICON TO MIC */}
                         <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                          <Mic size={12} className="text-purple-400" />
+                          {isManualReply ? (
+                             <Mic size={12} className="text-purple-400" />
+                          ) : (
+                             <Bot size={12} className="text-purple-400" />
+                          )}
                         </div>
                         
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
@@ -310,8 +334,7 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* CHANGED LABEL TO 'DJ' */}
-                      {isSystemReply && (
+                      {isManualReply && (
                         <div className="flex justify-end mt-1 mr-8">
                            <p className="text-[10px] text-gray-500">
                               DJ ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
