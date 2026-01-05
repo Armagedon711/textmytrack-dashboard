@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
+import { MessageSquare, User, Mic, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
 // REPLACE WITH YOUR NEW WORKFLOW URL
 const N8N_REPLY_WEBHOOK = "/api/reply";
@@ -88,29 +88,11 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
-          setMessages((prev) => {
-             // 1. Check if exact ID exists (Dedupe)
+           // Prevent duplicates if we already added it locally
+           setMessages((prev) => {
              if (prev.some(m => m.id === payload.new.id)) return prev;
-
-             // 2. CHECK FOR TEMP MESSAGE TO REPLACE
-             // We look for a message that starts with "temp-", matches the phone number, 
-             // and matches the content.
-             const tempMatchIndex = prev.findIndex(m => 
-                m.id.startsWith("temp-") && 
-                m.sender_number === payload.new.sender_number &&
-                m.reply_body === payload.new.reply_body
-             );
-
-             if (tempMatchIndex !== -1) {
-                // Replace the temporary message with the real one
-                const newMessages = [...prev];
-                newMessages[tempMatchIndex] = payload.new;
-                return newMessages;
-             }
-
-             // 3. Otherwise add as new
              return [...prev, payload.new];
-          });
+           });
         }
       )
       .on(
@@ -144,42 +126,40 @@ export default function LiveChat({
   const sendReply = async (phoneNumber) => {
       if (!replyText.trim()) return;
       setSendingReply(true);
-
-      // Optimistic Update
-      const tempId = "temp-" + Date.now();
-      const optimisticMsg = {
-          id: tempId,
-          dj_id: djId,
-          sender_number: phoneNumber,
-          message_body: "(Reply)",
-          reply_body: replyText,
-          created_at: new Date().toISOString()
-      };
-      
-      setMessages(prev => [...prev, optimisticMsg]);
+      const textToSend = replyText;
+      setReplyText(""); // Clear input immediately for better UX
       setReplyingTo(null);
-      setReplyText("");
 
       try {
+          // 1. SAVE TO DB FIRST (Guarantees it persists on refresh)
+          const { error: dbError } = await supabase.from('messages').insert({
+              dj_id: djId,
+              sender_number: phoneNumber,
+              message_body: "(Reply)",
+              reply_body: textToSend
+          });
+
+          if (dbError) throw dbError;
+
+          // 2. SEND SMS via n8n
           const res = await fetch(N8N_REPLY_WEBHOOK, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                   dj_id: djId,
                   phone: phoneNumber,
-                  message: optimisticMsg.reply_body
+                  message: textToSend
               })
           });
           
           const result = await res.json();
           if (!result.success) {
-              // If failed, remove the temp message
-              setMessages(prev => prev.filter(m => m.id !== tempId));
-              alert("Message Blocked: " + (result.error || "Safety Filter Triggered"));
+              alert("Message Blocked by Safety Filter: " + (result.error || "Unknown"));
           } 
+
       } catch (e) {
-          setMessages(prev => prev.filter(m => m.id !== tempId));
-          alert("Failed to send reply");
+          console.error(e);
+          alert("Failed to send reply. Please try again.");
       } finally {
           setSendingReply(false);
       }
@@ -225,6 +205,7 @@ export default function LiveChat({
             return (
               <div key={msg.id} className="space-y-2">
                 
+                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
                 {!isSystemReply && (
                   <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                     <div className="max-w-[90%] sm:max-w-[85%]">
@@ -305,13 +286,14 @@ export default function LiveChat({
                   </div>
                 )}
 
-                {/* BOT REPLY */}
+                {/* 2. DJ REPLY (Always show if exists) */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2 flex-row-reverse">
+                        {/* CHANGED ICON TO MIC */}
                         <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                          <Bot size={12} className="text-purple-400" />
+                          <Mic size={12} className="text-purple-400" />
                         </div>
                         
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
@@ -328,10 +310,11 @@ export default function LiveChat({
                         </div>
                       </div>
                       
+                      {/* CHANGED LABEL TO 'DJ' */}
                       {isSystemReply && (
                         <div className="flex justify-end mt-1 mr-8">
                            <p className="text-[10px] text-gray-500">
-                              DJ Bot ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              DJ ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                            </p>
                         </div>
                       )}
