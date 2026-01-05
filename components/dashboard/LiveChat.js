@@ -71,7 +71,6 @@ export default function LiveChat({
           setTimeout(scrollToBottom, 100);
         }
       )
-      // Listen for updates (like when we manually insert a retraction)
       .on(
         "postgres_changes", 
         { event: "UPDATE", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
@@ -106,9 +105,15 @@ export default function LiveChat({
         </div>
       )}
 
+      {/* FIX: Added overflow-x-hidden and custom scrollbar styles */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto px-4 pt-4 pb-8 space-y-4 pr-2 scrollbar-hide"
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4
+          [&::-webkit-scrollbar]:w-1.5
+          [&::-webkit-scrollbar-track]:bg-transparent
+          [&::-webkit-scrollbar-thumb]:bg-white/10
+          [&::-webkit-scrollbar-thumb]:rounded-full
+          hover:[&::-webkit-scrollbar-thumb]:bg-white/20"
       >
         {loading ? (
           <div className="flex items-center justify-center h-full text-gray-500">
@@ -121,7 +126,6 @@ export default function LiveChat({
         ) : (
           messages.map((msg) => {
             const userColor = getUserColor(msg.sender_number);
-            // CHECK FOR RETRACTION PHRASE
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
 
             return (
@@ -163,7 +167,6 @@ export default function LiveChat({
                           <Bot size={12} className="text-purple-400" />
                         </div>
                         
-                        {/* RETRACTION HIGHLIGHT */}
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
                           isRetraction 
                             ? "bg-red-500/10 border-red-500/20" 
