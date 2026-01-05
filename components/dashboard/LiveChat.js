@@ -27,6 +27,15 @@ const getUserColor = (phone) => {
   return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
 };
 
+const formatPhoneNumber = (phone) => {
+    if (!phone) return "Unknown";
+    const cleaned = phone.replace(/^\+1/, '').replace(/\D/g, '');
+    if (cleaned.length === 10) {
+        return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    return phone.replace(/^\+1/, '');
+};
+
 export default function LiveChat({ 
   djId, 
   showHeader = true, 
@@ -44,11 +53,12 @@ export default function LiveChat({
   // Reliable Auto-Scroll
   const scrollToBottom = () => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setTimeout(() => {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }, 50); // Small delay to allow DOM to render
     }
   };
 
-  // Trigger scroll whenever messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -78,7 +88,12 @@ export default function LiveChat({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `dj_id=eq.${djId}` },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          // Prevent duplicates from optimistic updates
+          setMessages((prev) => {
+             const exists = prev.some(m => m.id === payload.new.id);
+             if (exists) return prev;
+             return [...prev, payload.new];
+          });
         }
       )
       .on(
@@ -113,7 +128,7 @@ export default function LiveChat({
       if (!replyText.trim()) return;
       setSendingReply(true);
 
-      // Optimistic Update: Show the message immediately before server confirms
+      // Optimistic Update
       const tempId = "temp-" + Date.now();
       const optimisticMsg = {
           id: tempId,
@@ -141,17 +156,11 @@ export default function LiveChat({
           
           const result = await res.json();
           if (!result.success) {
-              // Remove optimistic message if failed
               setMessages(prev => prev.filter(m => m.id !== tempId));
               alert("Message Blocked: " + (result.error || "Safety Filter Triggered"));
-          } else {
-             // If success, we wait for Supabase real-time to replace the temp message
-             // (or we can leave it, as Supabase will likely send a duplicate we might need to de-dupe, 
-             // but usually the real ID update handles it if we managed state perfectly. 
-             // For simplicity, we just let the Realtime update arrive and it might double render briefly 
-             // or we can filter out temps when real arrives. 
-             // Given the n8n flow, it's safer to just rely on Realtime, but for "instant" mobile feel, we keep this.)
-          }
+          } 
+          // If success, we keep the temp message until Supabase real-time potentially replaces it
+          // or we can filter it out later. For now, keeping it ensures it stays on screen.
       } catch (e) {
           setMessages(prev => prev.filter(m => m.id !== tempId));
           alert("Failed to send reply");
@@ -174,7 +183,7 @@ export default function LiveChat({
 
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-20 lg:pb-4 space-y-4
+        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-20 lg:pb-4 space-y-4 scroll-smooth
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10
@@ -231,7 +240,7 @@ export default function LiveChat({
                       {/* User Info Row */}
                       <div className="flex items-center gap-3 mt-1.5 ml-8">
                           <p className="text-[10px] text-gray-600">
-                            {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            {formatPhoneNumber(msg.sender_number)} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </p>
                           
                           <div className="flex items-center gap-2">
@@ -305,11 +314,11 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* BOT INFO ROW (Only needed if it's a standalone reply) */}
+                      {/* SYSTEM REPLY INFO ROW - shows WHO we replied to */}
                       {isSystemReply && (
                         <div className="flex justify-end mt-1 mr-8">
-                           <p className="text-[10px] text-gray-600">
-                              DJ Bot • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                           <p className="text-[10px] text-gray-500">
+                              DJ Bot ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                            </p>
                         </div>
                       )}
