@@ -34,7 +34,7 @@ export default function LiveChat({
 }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [replyingTo, setReplyingTo] = useState(null); // ID of message we are replying to
+  const [replyingTo, setReplyingTo] = useState(null); 
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   
@@ -99,7 +99,6 @@ export default function LiveChat({
      alert("User banned.");
   };
 
-  // CHECK TIME LIMIT: Only allow reply if message is less than 12 hours old
   const canReply = (timestamp) => {
       const msgTime = new Date(timestamp).getTime();
       const now = new Date().getTime();
@@ -176,19 +175,23 @@ export default function LiveChat({
                 
                 {/* Incoming User Message */}
                 <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
-                  <div className="max-w-[85%]">
+                  <div className="max-w-[90%] sm:max-w-[85%]">
                     <div className="flex items-end gap-2">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${userColor.bg}`}>
                         <User size={12} className={userColor.text} />
                       </div>
-                      <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2 group relative">
-                        <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
-                        
-                        {/* REPLY BUTTON (Only if recent) */}
+                      
+                      <div className="group relative">
+                        {/* Message Bubble */}
+                        <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2">
+                          <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
+                        </div>
+
+                        {/* DESKTOP Reply Button (Floating on Right) */}
                         {showReplyBtn && (
                             <button 
                                 onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
-                                className="absolute -right-8 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="hidden sm:flex absolute -right-10 top-1/2 -translate-y-1/2 w-8 h-8 items-center justify-center bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-all opacity-50 hover:opacity-100"
                                 title="Reply"
                             >
                                 <Reply size={14} />
@@ -197,42 +200,59 @@ export default function LiveChat({
                       </div>
                     </div>
                     
+                    {/* INFO ROW: Time, Phone, and Actions */}
+                    <div className="flex items-center gap-3 mt-1.5 ml-8">
+                        <p className="text-[10px] text-gray-600">
+                          {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                        
+                        <div className="flex items-center gap-2">
+                            {/* MOBILE Reply Button */}
+                            {showReplyBtn && (
+                                <button 
+                                    onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
+                                    className="sm:hidden flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-md text-[10px] font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+                                >
+                                    <Reply size={10} /> Reply
+                                </button>
+                            )}
+
+                            {/* BAN Button (Visible but subtle) */}
+                            <button 
+                              onClick={() => handleBan(msg.sender_number)}
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-gray-600 hover:bg-red-500/10 hover:text-red-400 transition-colors opacity-60 hover:opacity-100"
+                              title="Ban User"
+                            >
+                               <Ban size={10} /> <span className="hidden sm:inline">Ban</span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* REPLY INPUT AREA */}
                     {replyingTo === msg.id && (
-                        <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2">
+                        <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2 bg-[#16161f] p-2 rounded-lg border border-white/10">
                             <input 
                                 autoFocus
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
                                 placeholder="Type a reply..."
-                                className="bg-[#0a0a0f] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white w-full focus:border-pink-500 outline-none"
+                                className="bg-transparent border-none text-xs text-white w-full focus:ring-0 outline-none"
                                 onKeyDown={(e) => e.key === 'Enter' && sendReply(msg.sender_number)}
                             />
-                            <button 
-                                onClick={() => sendReply(msg.sender_number)} 
-                                disabled={sendingReply}
-                                className="p-1.5 bg-pink-500 text-white rounded-md hover:bg-pink-400 disabled:opacity-50"
-                            >
-                                {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                            </button>
-                            <button onClick={() => setReplyingTo(null)} className="p-1 text-gray-500 hover:text-white">
-                                <X size={12} />
-                            </button>
+                            <div className="flex items-center gap-1 border-l border-white/10 pl-2">
+                                <button 
+                                    onClick={() => sendReply(msg.sender_number)} 
+                                    disabled={sendingReply}
+                                    className="p-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-400 disabled:opacity-50 transition-colors"
+                                >
+                                    {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                </button>
+                                <button onClick={() => setReplyingTo(null)} className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/5 rounded-md transition-colors">
+                                    <X size={12} />
+                                </button>
+                            </div>
                         </div>
                     )}
-
-                    <div className="flex items-center gap-2 mt-1 ml-8 group">
-                        <p className="text-[10px] text-gray-600">
-                          {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </p>
-                        <button 
-                          onClick={() => handleBan(msg.sender_number)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500/20 rounded text-gray-600 hover:text-red-400 transition-all"
-                          title="Ban User"
-                        >
-                           <Ban size={10} />
-                        </button>
-                    </div>
                   </div>
                 </div>
 
