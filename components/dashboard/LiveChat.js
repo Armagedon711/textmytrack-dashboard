@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Bot, Loader2, Ban, Trash2 } from "lucide-react";
+import { MessageSquare, User, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
-// --- 1. USER COLOR GENERATOR ---
+// REPLACE WITH YOUR NEW WORKFLOW URL
+const N8N_REPLY_WEBHOOK = "https://n8n.theprotoforge.com/webhook/dj-reply";
+
 const USER_COLORS = [
   { bg: "bg-blue-500/20", text: "text-blue-400" },
   { bg: "bg-green-500/20", text: "text-green-400" },
@@ -32,6 +34,10 @@ export default function LiveChat({
 }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [replyingTo, setReplyingTo] = useState(null); // ID of message we are replying to
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  
   const supabase = supabaseBrowserClient();
   const scrollRef = useRef(null);
 
@@ -93,6 +99,43 @@ export default function LiveChat({
      alert("User banned.");
   };
 
+  // CHECK TIME LIMIT: Only allow reply if message is less than 12 hours old
+  const canReply = (timestamp) => {
+      const msgTime = new Date(timestamp).getTime();
+      const now = new Date().getTime();
+      const hoursDiff = (now - msgTime) / (1000 * 60 * 60);
+      return hoursDiff < 12;
+  };
+
+  const sendReply = async (phoneNumber) => {
+      if (!replyText.trim()) return;
+      setSendingReply(true);
+
+      try {
+          const res = await fetch(N8N_REPLY_WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  dj_id: djId,
+                  phone: phoneNumber,
+                  message: replyText
+              })
+          });
+          
+          const result = await res.json();
+          if (!result.success) {
+              alert("Message Blocked: " + (result.error || "Safety Filter Triggered"));
+          } else {
+              setReplyingTo(null);
+              setReplyText("");
+          }
+      } catch (e) {
+          alert("Failed to send reply");
+      } finally {
+          setSendingReply(false);
+      }
+  };
+
   return (
     <div className={`flex flex-col bg-[#12121a] border border-white/5 rounded-2xl overflow-hidden mt-6 ${className}`}>
       
@@ -105,13 +148,9 @@ export default function LiveChat({
         </div>
       )}
 
-      {/* FIX: RESPONSIVE PADDING
-          - pb-20: Adds buffer on mobile so the last message isn't hidden.
-          - lg:pb-4: Resets buffer on Desktop so there's no weird gap.
-      */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-10 lg:pb-4 space-y-4
+        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-20 lg:pb-4 space-y-4
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10
@@ -130,22 +169,58 @@ export default function LiveChat({
           messages.map((msg) => {
             const userColor = getUserColor(msg.sender_number);
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
+            const showReplyBtn = canReply(msg.created_at);
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* Incoming Message */}
+                {/* Incoming User Message */}
                 <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="max-w-[85%]">
                     <div className="flex items-end gap-2">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${userColor.bg}`}>
                         <User size={12} className={userColor.text} />
                       </div>
-                      <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2">
+                      <div className="bg-[#1e1e2d] border border-white/5 rounded-2xl rounded-bl-none px-3 py-2 group relative">
                         <p className="text-xs sm:text-sm text-gray-200 break-words leading-relaxed">{msg.message_body}</p>
+                        
+                        {/* REPLY BUTTON (Only if recent) */}
+                        {showReplyBtn && (
+                            <button 
+                                onClick={() => { setReplyingTo(msg.id); setReplyText(""); }}
+                                className="absolute -right-8 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Reply"
+                            >
+                                <Reply size={14} />
+                            </button>
+                        )}
                       </div>
                     </div>
                     
+                    {/* REPLY INPUT AREA */}
+                    {replyingTo === msg.id && (
+                        <div className="mt-2 ml-8 flex items-center gap-2 animate-in slide-in-from-top-2">
+                            <input 
+                                autoFocus
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                placeholder="Type a reply..."
+                                className="bg-[#0a0a0f] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white w-full focus:border-pink-500 outline-none"
+                                onKeyDown={(e) => e.key === 'Enter' && sendReply(msg.sender_number)}
+                            />
+                            <button 
+                                onClick={() => sendReply(msg.sender_number)} 
+                                disabled={sendingReply}
+                                className="p-1.5 bg-pink-500 text-white rounded-md hover:bg-pink-400 disabled:opacity-50"
+                            >
+                                {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                            </button>
+                            <button onClick={() => setReplyingTo(null)} className="p-1 text-gray-500 hover:text-white">
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-2 mt-1 ml-8 group">
                         <p className="text-[10px] text-gray-600">
                           {msg.sender_number.replace(/^\+1/, '')} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
