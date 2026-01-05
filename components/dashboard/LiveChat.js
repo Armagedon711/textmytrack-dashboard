@@ -5,7 +5,7 @@ import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { MessageSquare, User, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
 // REPLACE WITH YOUR NEW WORKFLOW URL
-const N8N_REPLY_WEBHOOK = "https://n8n.theprotoforge.com/webhook/dj-reply";
+const N8N_REPLY_WEBHOOK = "/api/reply";
 
 const USER_COLORS = [
   { bg: "bg-blue-500/20", text: "text-blue-400" },
