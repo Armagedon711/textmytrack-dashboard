@@ -105,10 +105,13 @@ export default function LiveChat({
         </div>
       )}
 
-      {/* FIX: Removed pb-20, reverted to standard p-4 padding */}
+      {/* FIX: RESPONSIVE PADDING
+          - pb-20: Adds buffer on mobile so the last message isn't hidden.
+          - lg:pb-4: Resets buffer on Desktop so there's no weird gap.
+      */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4
+        className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 pb-20 lg:pb-4 space-y-4
           [&::-webkit-scrollbar]:w-1.5
           [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-white/10
