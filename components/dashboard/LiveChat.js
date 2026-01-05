@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
-import { MessageSquare, User, Mic, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
+import { MessageSquare, User, Mic, Bot, Loader2, Ban, Trash2, Reply, Send, X } from "lucide-react";
 
 // REPLACE WITH YOUR NEW WORKFLOW URL
 const N8N_REPLY_WEBHOOK = "/api/reply";
@@ -200,13 +200,15 @@ export default function LiveChat({
             const isRetraction = msg.reply_body && (msg.reply_body.includes("I've removed") || msg.reply_body.includes("removed"));
             const showReplyBtn = canReply(msg.created_at);
             
-            const isSystemReply = msg.message_body === "(Reply)";
+            // LOGIC: If message_body is "(Reply)", it's a manual DJ reply.
+            // Otherwise, it's an automated bot message (referencing a user request).
+            const isManualReply = msg.message_body === "(Reply)";
 
             return (
               <div key={msg.id} className="space-y-2">
                 
-                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a bot reply) */}
-                {!isSystemReply && (
+                {/* 1. USER MESSAGE (Hide if it's just a placeholder for a manual DJ reply) */}
+                {!isManualReply && (
                   <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
                     <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2">
@@ -286,14 +288,19 @@ export default function LiveChat({
                   </div>
                 )}
 
-                {/* 2. DJ REPLY (Always show if exists) */}
+                {/* 2. SYSTEM REPLY (Bot or DJ) */}
                 {msg.reply_body && (
                   <div className="flex justify-end animate-in fade-in slide-in-from-right-2 duration-300">
                      <div className="max-w-[90%] sm:max-w-[85%]">
                       <div className="flex items-end gap-2 flex-row-reverse">
-                        {/* CHANGED ICON TO MIC */}
+                        
+                        {/* ICON: Mic if Manual, Bot if Auto */}
                         <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                          <Mic size={12} className="text-purple-400" />
+                          {isManualReply ? (
+                             <Mic size={12} className="text-purple-400" />
+                          ) : (
+                             <Bot size={12} className="text-purple-400" />
+                          )}
                         </div>
                         
                         <div className={`rounded-2xl rounded-br-none px-3 py-2 border ${
@@ -310,8 +317,8 @@ export default function LiveChat({
                         </div>
                       </div>
                       
-                      {/* CHANGED LABEL TO 'DJ' */}
-                      {isSystemReply && (
+                      {/* LABEL: Only show "DJ -> Number" if it was a manual reply */}
+                      {isManualReply && (
                         <div className="flex justify-end mt-1 mr-8">
                            <p className="text-[10px] text-gray-500">
                               DJ ➝ <span className="text-gray-400">{formatPhoneNumber(msg.sender_number)}</span> • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
