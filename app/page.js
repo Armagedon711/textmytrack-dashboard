@@ -369,6 +369,8 @@ export default function Dashboard() {
                platform={selectedPlatform}
                setPlatform={setSelectedPlatform}
                platformsConfig={PLATFORMS}
+               isMinimized={isMinimized}
+               hasActiveVideo={!!videoModalId}
              />
           </div>
 

@@ -21,14 +21,22 @@ export default function StatsSidebar({
   toggleAccepting, 
   platform,
   setPlatform,
-  platformsConfig 
+  platformsConfig,
+  isMinimized,      // Received from page.js
+  hasActiveVideo    // Received from page.js
 }) {
   const isHeadliner = djProfile?.plan?.toLowerCase() === "headliner";
   const formattedUniversalNumber = formatPhoneNumber(universalNumber);
   const formattedTwilioNumber = formatPhoneNumber(djProfile?.twilio_number);
 
+  // DYNAMIC HEIGHT LOGIC:
+  // If a video is loaded AND minimized, we shrink the chat by ~170px to make room for the player.
+  // Otherwise, we use the standard full height.
+  const chatHeightClass = (hasActiveVideo && isMinimized) 
+    ? "h-[calc(100vh-520px)]" 
+    : "h-[calc(100vh-350px)]";
+
   return (
-    // Added 'sticky' and 'top-4' so the sidebar stays fixed while the song list scrolls
     <div className="space-y-6 sticky top-4">
       
       {/* Request Line Card */}
@@ -64,7 +72,7 @@ export default function StatsSidebar({
         </button>
       </div>
 
-      {/* Platform Selector (Compact Dropdown) */}
+      {/* Platform Selector */}
       <div className="p-4 rounded-2xl bg-[#12121a] border border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-2 text-gray-400">
            <ExternalLink size={16} />
@@ -84,12 +92,11 @@ export default function StatsSidebar({
         </select>
       </div>
 
-      {/* Live Chat Feed - DYNAMIC HEIGHT CALCULATION */}
-      {/* h-[calc(100vh-350px)] ensures it fills the screen minus the space taken by the headers above */}
+      {/* Live Chat Feed with Dynamic Height */}
       {djProfile?.id && (
         <LiveChat 
           djId={djProfile.id} 
-          className="h-[calc(100vh-350px)] min-h-[400px]" 
+          className={`${chatHeightClass} min-h-[300px] transition-all duration-300`} 
         />
       )}
     </div>
