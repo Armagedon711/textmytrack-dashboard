@@ -8,7 +8,7 @@ const supabase = createClient(
 
 const N8N_BROADCAST_URL = process.env.N8N_WEBHOOK_URL 
   ? process.env.N8N_WEBHOOK_URL.replace('dj-reply', 'broadcast-links') // Auto-switch based on env
-  : "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
+  : "https://n8n.theprotoforge.com/webhook-test/broadcast-links"; 
 
 export async function POST(req) {
   try {
