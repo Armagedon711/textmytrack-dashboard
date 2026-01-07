@@ -28,7 +28,8 @@ export default function StatsSidebar({
   const formattedTwilioNumber = formatPhoneNumber(djProfile?.twilio_number);
 
   return (
-    <div className="space-y-6">
+    // Added 'sticky' and 'top-4' so the sidebar stays fixed while the song list scrolls
+    <div className="space-y-6 sticky top-4">
       
       {/* Request Line Card */}
       <div className="p-5 rounded-2xl bg-[#12121a] border border-white/5">
@@ -83,8 +84,14 @@ export default function StatsSidebar({
         </select>
       </div>
 
-      {/* Live Chat Feed */}
-      {djProfile?.id && <LiveChat djId={djProfile.id} />}
+      {/* Live Chat Feed - DYNAMIC HEIGHT CALCULATION */}
+      {/* h-[calc(100vh-350px)] ensures it fills the screen minus the space taken by the headers above */}
+      {djProfile?.id && (
+        <LiveChat 
+          djId={djProfile.id} 
+          className="h-[calc(100vh-350px)] min-h-[400px]" 
+        />
+      )}
     </div>
   );
 }
