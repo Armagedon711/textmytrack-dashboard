@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabaseBrowserClient } from "../lib/supabaseClient";
+import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
-// Components
-import PlayerModal from "../components/dashboard/PlayerModal";
-import RequestList from "../components/dashboard/RequestList";
-import StatsSidebar from "../components/dashboard/StatsSidebar";
-import SettingsModal from "../components/dashboard/SettingsModal";
-import LiveChat from "../components/dashboard/LiveChat"; 
-import AddSongModal from "../components/dashboard/AddSongModal"; 
+// Components (Using @/ alias for safety)
+import PlayerModal from "@/components/dashboard/PlayerModal";
+import RequestList from "@/components/dashboard/RequestList";
+import StatsSidebar from "@/components/dashboard/StatsSidebar";
+import SettingsModal from "@/components/dashboard/SettingsModal";
+import LiveChat from "@/components/dashboard/LiveChat"; 
+import AddSongModal from "@/components/dashboard/AddSongModal"; 
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
