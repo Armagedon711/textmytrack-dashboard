@@ -237,20 +237,22 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { dj_id, tag, request_limit_count, request_limit_hours } = body;
+    const { dj_id, tag, request_limit_count, request_limit_hours, tip_link, review_link } = body;
 
     if (!dj_id) {
       return NextResponse.json({ error: "Missing DJ ID" }, { status: 400 });
     }
 
     // Update the database
-    // FIX: Using .eq('id', dj_id) because the primary key column is 'id', not 'dj_id'
+    // Added tip_link and review_link
     const { data, error } = await supabaseAdmin
       .from('dj_profiles')
       .update({
         tag: tag,
         request_limit_count: request_limit_count,
-        request_limit_hours: request_limit_hours
+        request_limit_hours: request_limit_hours,
+        tip_link: tip_link,
+        review_link: review_link
       })
       .eq('id', dj_id) 
       .select();

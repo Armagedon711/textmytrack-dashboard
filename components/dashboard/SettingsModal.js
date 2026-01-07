@@ -1,395 +1,544 @@
-import { useState, useEffect } from "react";
-import { 
-  X, Save, AlertCircle, CheckCircle2, DollarSign, Mail, 
-  Lock, Ban, Trash2, Plus, ShieldAlert, User, Music, Settings 
-} from "lucide-react";
-import { supabaseBrowserClient } from "@/lib/supabaseClient";
+"use client";
 
-// --- FIX 1: Moved NavItem OUTSIDE to prevent re-rendering/scroll jumping ---
-const NavItem = ({ id, label, icon: Icon, activeSection, setActiveSection }) => (
-  <button 
-    onClick={() => setActiveSection(id)}
-    className={`flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all rounded-xl whitespace-nowrap ${
-      activeSection === id 
-        ? "bg-pink-500/10 text-pink-400 border border-pink-500/20" 
-        : "text-gray-400 hover:text-white hover:bg-white/5"
-    }`}
-  >
-    <Icon size={18} />
-    {label}
-  </button>
-);
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { supabaseBrowserClient } from "../lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone } from "lucide-react";
+import { DragDropContext } from "@hello-pangea/dnd"; 
 
-export default function SettingsModal({ 
-  isOpen, 
-  onClose, 
-  djProfile, 
-  user, 
-  universalNumber 
-}) {
-  const [activeSection, setActiveSection] = useState("profile"); 
-  
-  // -- Data State --
-  const [tag, setTag] = useState(djProfile?.tag || "");
-  const [limitCount, setLimitCount] = useState(djProfile?.request_limit_count || 5);
-  const [limitHours, setLimitHours] = useState(djProfile?.request_limit_hours || 1);
+// Components
+import PlayerModal from "../components/dashboard/PlayerModal";
+import RequestList from "../components/dashboard/RequestList";
+import StatsSidebar from "../components/dashboard/StatsSidebar";
+import SettingsModal from "../components/dashboard/SettingsModal";
+import LiveChat from "../components/dashboard/LiveChat"; 
+import AddSongModal from "../components/dashboard/AddSongModal"; 
 
-  // -- UI State --
-  const [status, setStatus] = useState({ type: "", msg: "" });
-  const [loading, setLoading] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  
-  // -- Blacklist State --
-  const [blacklist, setBlacklist] = useState([]);
-  const [newBanNumber, setNewBanNumber] = useState("");
-  
+// Constants
+const UNIVERSAL_NUMBER = "(855) 710-5533";
+const PLATFORMS = {
+  youtube: { name: "YouTube", icon: "▶️", color: "#FF0000", textColor: "text-red-400", bgColor: "bg-red-500/10", borderColor: "border-red-500/30" },
+  spotify: { name: "Spotify", icon: "🟢", color: "#1DB954", textColor: "text-green-400", bgColor: "bg-green-500/10", borderColor: "border-green-500/30" },
+  apple: { name: "Apple Music", icon: "🍎", color: "#FC3C44", textColor: "text-pink-400", bgColor: "bg-pink-500/10", borderColor: "border-pink-500/30" },
+  soundcloud: { name: "SoundCloud", icon: "☁️", color: "#FF5500", textColor: "text-orange-400", bgColor: "bg-orange-500/10", borderColor: "border-orange-500/30" },
+};
+const TABS = [
+  { key: "pending", label: "Requests" },
+  { key: "approved", label: "Approved" },
+  { key: "rejected", label: "Rejected" },
+  { key: "played", label: "Played" },
+  { key: "all", label: "All" },
+];
+
+// Helper to format phone numbers
+const formatPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return "...";
+  let cleaned = ('' + phoneNumber).replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      cleaned = cleaned.substring(1);
+  }
+  const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+  if (match) {
+    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+  }
+  return phoneNumber;
+};
+
+export default function Dashboard() {
   const supabase = supabaseBrowserClient();
+  const router = useRouter();
 
-  useEffect(() => {
-    if (isOpen && activeSection === 'blacklist' && user?.id) {
-       fetch(`/api/blacklist?dj_id=${user.id}`)
-         .then(res => res.json())
-         .then(data => setBlacklist(data.blacklist || []));
+  // Data State
+  const [requests, setRequests] = useState([]);
+  const [djProfile, setDjProfile] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // UI State
+  const [filterStatus, setFilterStatus] = useState("pending");
+  const [selectedPlatform, setSelectedPlatform] = useState("youtube");
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAddSong, setShowAddSong] = useState(false); 
+  const [isChatExpanded, setIsChatExpanded] = useState(false); 
+
+  // Player State
+  const [videoModalId, setVideoModalId] = useState(null); 
+  const [playingRequestId, setPlayingRequestId] = useState(null); 
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(true);
+
+  // --- Derived State ---
+  const filteredRequests = useMemo(() => {
+    let result = requests;
+    if (filterStatus !== "all") {
+        result = requests.filter(r => r.status === filterStatus);
     }
-  }, [isOpen, activeSection, user]);
+    return result.sort((a, b) => (a.position || 0) - (b.position || 0));
+  }, [requests, filterStatus]);
 
+  const stats = useMemo(() => ({
+    total: requests.length,
+    pending: requests.filter(r => r.status === "pending").length,
+    approved: requests.filter(r => r.status === "approved").length,
+    rejected: requests.filter(r => r.status === "rejected").length,
+    played: requests.filter(r => r.status === "played").length,
+  }), [requests]);
+
+  const currentPlayingRequest = useMemo(() => 
+    requests.find(r => r.id === playingRequestId), 
+  [requests, playingRequestId]);
+
+  // --- Next Song Logic ---
+  const nextSong = useMemo(() => {
+    if (!currentPlayingRequest) return null;
+    
+    const queue = requests
+        .filter(r => r.status === 'approved' && r.youtube_video_id)
+        .sort((a, b) => (a.position || 0) - (b.position || 0));
+    
+    if (queue.length === 0) return null;
+
+    const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
+    const next = queue[currentIndex + 1];
+    
+    return next || queue[0];
+  }, [requests, currentPlayingRequest]);
+
+
+  // --- Data Loading & Auth ---
   useEffect(() => {
-    if (djProfile) {
-        setTag(djProfile.tag || "");
-        setLimitCount(djProfile.request_limit_count || 5);
-        setLimitHours(djProfile.request_limit_hours || 1);
-    }
-  }, [djProfile]);
+    let mounted = true;
 
-  if (!isOpen) return null;
-
-  const formatPhoneNumber = (phoneNumber) => {
-    if (!phoneNumber) return "...";
-    const cleaned = ('' + phoneNumber).replace(/\D/g, '');
-    const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-    if (match) return '(' + match[1] + ') ' + match[2] + '-' + match[3];
-    return phoneNumber;
-  };
-
-  const handleSaveSettings = async () => {
-    setStatus({ type: "", msg: "" });
-    if (!tag.trim()) return setStatus({ type: "error", msg: "Tag cannot be empty" });
-    if (limitCount < 1 || limitCount > 100) return setStatus({ type: "error", msg: "Max requests must be between 1 and 100" });
-    if (limitHours < 1 || limitHours > 24) return setStatus({ type: "error", msg: "Time limit must be between 1 and 24 hours" });
-
-    setLoading(true);
-    try {
-      const res = await fetch("/api/dj-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            dj_id: user.id, 
-            tag: tag.trim(),
-            request_limit_count: parseInt(limitCount),
-            request_limit_hours: parseInt(limitHours)
-        }),
-      });
-
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to update settings");
+    const init = async () => {
+      // 1. Initial Session Check
+      const { data: { session }, error } = await supabase.auth.getSession();
       
-      setStatus({ type: "success", msg: "Settings saved successfully!" });
-      setTimeout(() => setStatus({ type: "", msg: "" }), 3000);
-
-    } catch (e) { 
-        console.error(e);
-        setStatus({ type: "error", msg: e.message || "Failed to update settings" }); 
-    } 
-    finally { setLoading(false); }
-  };
-
-  const handleResetPassword = async () => {
-      if (!user?.email) return;
-      setResetLoading(true);
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: `${window.location.origin}/update-password` });
-      if (error) setStatus({ type: "error", msg: error.message });
-      else setStatus({ type: "success", msg: "Password reset email sent!" });
-      setResetLoading(false);
-  };
-
-  const handleBan = async () => {
-      if(!newBanNumber) return;
-      const res = await fetch("/api/blacklist", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dj_id: user.id, phone_number: newBanNumber })
-      });
-      if(res.ok) {
-          setBlacklist(prev => [{ phone_number: newBanNumber, added_at: new Date() }, ...prev]);
-          setNewBanNumber("");
+      if (error || !session) {
+        if (mounted) router.push("/login");
+        return;
       }
+      
+      if (mounted) setUser(session.user);
+      
+      // 2. Load Profile
+      const { data: profile } = await supabase.from("dj_profiles").select("*").eq("id", session.user.id).single();
+      if (profile && mounted) {
+        setDjProfile(profile);
+        if (profile.preferred_platform) setSelectedPlatform(profile.preferred_platform);
+      }
+
+      // 3. Load Requests
+      const { data: reqs } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('dj_id', session.user.id)
+        .order('position', { ascending: true });
+      
+      if (reqs && mounted) setRequests(reqs);
+      
+      if (mounted) setLoading(false);
+    };
+
+    init();
+
+    // 4. AUTH STATE LISTENER (Fixes Auto-Logout Issues)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.push("/login");
+        setUser(null);
+      } else if (session?.user) {
+        // If token refreshes, update the user state silently
+        setUser(session.user);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+
+  // --- Realtime Subscription ---
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase.channel("realtime-requests")
+      .on("postgres_changes", 
+        { event: "*", schema: "public", table: "requests", filter: `dj_id=eq.${user.id}` }, 
+        (payload) => {
+          if (payload.eventType === "INSERT") setRequests(prev => [...prev, payload.new]); 
+          else if (payload.eventType === "UPDATE") setRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
+          else if (payload.eventType === "DELETE") setRequests(prev => prev.filter(r => r.id !== payload.old.id));
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user]);
+
+
+  // --- Actions ---
+  const handleUpdateStatus = async (id, status) => {
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    await fetch("/api/update-request", { 
+       method: "POST", headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ id, status })
+    });
   };
 
-  const handleUnban = async (phone) => {
-      await fetch("/api/blacklist", {
-          method: "DELETE", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dj_id: user.id, phone_number: phone })
-      });
-      setBlacklist(prev => prev.filter(item => item.phone_number !== phone));
+  const handleDelete = async (id) => {
+    if(!confirm("Delete request?")) return;
+    setRequests(prev => prev.filter(r => r.id !== id));
+    await fetch("/api/requests-delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
   };
+
+  const clearAllFiltered = async () => {
+    if(!confirm(`Delete all ${filteredRequests.length} items?`)) return;
+    const ids = filteredRequests.map(r => r.id);
+    setRequests(prev => prev.filter(r => !ids.includes(r.id)));
+    ids.forEach(id => fetch("/api/requests-delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+    }));
+  };
+
+  const toggleAccepting = async () => {
+    if(!djProfile) return;
+    
+    // 1. Calculate the NEW state (we are toggling)
+    const isTurningOff = djProfile.accepting_requests === true;
+    const newVal = !djProfile.accepting_requests;
+
+    // 2. Update UI & DB Immediately
+    setDjProfile(prev => ({ ...prev, accepting_requests: newVal }));
+    await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
+
+    // 3. IF TURNING OFF -> Check for Links & Trigger Popup
+    if (isTurningOff) {
+        // Check if they have links set up
+        if (djProfile.tip_link || djProfile.review_link) {
+            const shouldSend = confirm(
+                "🏁 You just paused requests!\n\n" +
+                "Would you like to text your Tip Link & Review Link to everyone who requested a song in the last 24 hours?"
+            );
+
+            if (shouldSend) {
+                // Call API to broadcast the message
+                await fetch("/api/broadcast-links", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dj_id: user.id })
+                });
+                alert("Links sent to recent guests! 🚀");
+            }
+        }
+    }
+  };
+
+  const handleOnDragEnd = async (result) => {
+    if (!result.destination) return;
+
+    const items = Array.from(filteredRequests);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    const updates = items.map((item, index) => ({
+        id: item.id,
+        position: index * 1000 
+    }));
+
+    setRequests(prev => {
+        const next = prev.map(r => {
+            const update = updates.find(u => u.id === r.id);
+            return update ? { ...r, position: update.position } : r;
+        });
+        return next;
+    });
+
+    const { error } = await supabase.from('requests').upsert(updates);
+    if (error) console.error("Reorder failed", error);
+  };
+
+  const handlePlayRequest = (req, isInternalPlayer) => {
+    if(isInternalPlayer && req.youtube_video_id) {
+       setVideoModalId(req.youtube_video_id);
+       setPlayingRequestId(req.id);
+       setIsMinimized(false);
+    } else {
+       let url = null;
+       if (selectedPlatform === 'spotify' && req.spotify_url) url = req.spotify_url;
+       else if (selectedPlatform === 'apple' && req.apple_url) url = req.apple_url;
+       else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) url = req.soundcloud_url;
+       else if (req.url) url = req.url;
+       
+       if(url) window.open(url, '_blank');
+    }
+  };
+
+  const handleNextSong = useCallback(() => {
+    if (autoPlay && nextSong) {
+      if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
+      setTimeout(() => {
+        setPlayingRequestId(nextSong.id);
+        setVideoModalId(nextSong.youtube_video_id);
+      }, 100);
+    } else {
+       setVideoModalId(null);
+       setPlayingRequestId(null);
+    }
+  }, [autoPlay, nextSong, currentPlayingRequest]);
+
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
-       <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
-       
-       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[600px] max-h-[90vh]">
-         
-         {/* LEFT SIDEBAR (Desktop) / TOP NAV (Mobile) */}
-         <div className="w-full md:w-64 bg-[#16161f] border-b md:border-b-0 md:border-r border-white/5 flex flex-col shrink-0">
-            <div className="flex items-center justify-between p-4 md:mb-4">
-                <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center">
-                     <Settings size={18} className="text-white" />
-                   </div>
-                   <h2 className="text-lg font-bold text-white">Settings</h2>
-                </div>
-                <button onClick={onClose} className="md:hidden p-2 hover:bg-white/10 rounded-lg text-gray-400">
-                  <X size={20} />
-                </button>
-            </div>
+    <main 
+      className="
+        h-screen overflow-y-scroll 
+        bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]
+        [&::-webkit-scrollbar]:w-2
+        [&::-webkit-scrollbar-track]:bg-[#0a0a0f]
+        [&::-webkit-scrollbar-thumb]:bg-[#2a2a35]
+        [&::-webkit-scrollbar-thumb]:rounded-full
+        hover:[&::-webkit-scrollbar-thumb]:bg-[#3a3a4a]
+      "
+    >
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
+      </div>
 
-            <div className="flex md:flex-col overflow-x-auto md:overflow-visible px-4 md:px-2 space-x-2 md:space-x-0 md:space-y-1 pb-4 md:pb-0 scrollbar-hide">
-              <NavItem id="profile" label="General Profile" icon={User} activeSection={activeSection} setActiveSection={setActiveSection} />
-              <NavItem id="controls" label="Guest Controls" icon={ShieldAlert} activeSection={activeSection} setActiveSection={setActiveSection} />
-              <NavItem id="blacklist" label="Blacklist" icon={Ban} activeSection={activeSection} setActiveSection={setActiveSection} />
-              <NavItem id="account" label="Account" icon={Lock} activeSection={activeSection} setActiveSection={setActiveSection} />
-            </div>
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)}
+        djProfile={djProfile}
+        user={user}
+        universalNumber={UNIVERSAL_NUMBER}
+      />
 
-            {/* Desktop Plan Info */}
-            <div className="hidden md:block mt-auto p-4 border-t border-white/5">
-                <div className="px-4 py-3 bg-[#0e0e14] rounded-xl border border-white/5">
-                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Current Plan</p>
-                    <div className="flex items-center justify-between">
-                        <span className="text-white font-medium capitalize">{djProfile?.plan || "Trial"}</span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/20">Active</span>
-                    </div>
-                </div>
-            </div>
-         </div>
+      {/* --- ADD SONG MODAL --- */}
+      <AddSongModal 
+        isOpen={showAddSong}
+        onClose={() => setShowAddSong(false)}
+        djId={user?.id}
+      />
 
-         {/* RIGHT CONTENT AREA */}
-         <div className="flex-1 flex flex-col relative bg-[#12121a] min-h-0">
-            <button onClick={onClose} className="hidden md:block absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg text-gray-400 z-10">
-              <X size={20} />
+      <PlayerModal 
+        videoId={videoModalId}
+        request={currentPlayingRequest}
+        nextSong={nextSong}
+        isMinimized={isMinimized}
+        isMuted={isMuted}
+        autoPlay={autoPlay}
+        onClose={() => { setVideoModalId(null); setPlayingRequestId(null); }}
+        onMinimize={() => setIsMinimized(true)}
+        onMaximize={() => setIsMinimized(false)}
+        onToggleMute={() => setIsMuted(!isMuted)}
+        onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
+        onTogglePlay={() => {}} 
+        onSkip={handleNextSong}
+        onApprove={() => {
+            if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "approved");
+            handleNextSong();
+        }}
+        onMarkPlayed={() => {
+            if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
+            setVideoModalId(null);
+        }}
+        onVideoEnd={handleNextSong}
+      />
+
+      {/* Main Container */}
+      <div className={`relative max-w-7xl mx-auto p-4 lg:p-8 ${videoModalId && isMinimized ? "pb-48" : "pb-24"}`}>
+        
+        {/* Desktop Header */}
+        <header className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+              <Disc3 size={24} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">TextMyTrack</h1>
+              <p className="text-xs text-gray-500">DJ Dashboard</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            
+            {/* --- ADD SONG BUTTON --- */}
+            <button 
+              onClick={() => setShowAddSong(true)} 
+              className="p-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg shadow-lg shadow-pink-900/20 flex items-center gap-2 transition-all"
+            >
+              <Plus size={18} /> <span className="hidden sm:block font-bold">Add Song</span>
             </button>
 
-            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
-                
-                {status.msg && (
-                    <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 text-sm ${
-                        status.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'
-                    }`}>
-                        {status.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>}
-                        {status.msg}
-                    </div>
-                )}
+            <button onClick={() => setShowSettings(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
+              <Settings size={18} /> <span className="hidden sm:block">Settings</span>
+            </button>
+            <button onClick={() => { supabase.auth.signOut(); router.push("/login"); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
+              <LogOut size={18} /> <span className="hidden sm:block">Logout</span>
+            </button>
+          </div>
+        </header>
 
-                {/* 1. GENERAL PROFILE */}
-                {activeSection === 'profile' && (
-                    <div className="space-y-8 max-w-lg">
-                        
-                        {/* --- FIX 2: MOBILE PLAN INFO --- */}
-                        <div className="block md:hidden mb-6">
-                            <div className="px-4 py-3 bg-[#16161f] rounded-xl border border-white/5 flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase font-bold">Current Plan</p>
-                                    <p className="text-white font-medium capitalize">{djProfile?.plan || "Trial"}</p>
-                                </div>
-                                <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/20">Active</span>
-                            </div>
-                        </div>
-                        {/* ------------------------------- */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          
+          {/* LEFT SIDEBAR (Desktop Only) */}
+          <div className="hidden lg:block lg:col-span-1">
+             <StatsSidebar 
+               stats={stats}
+               djProfile={djProfile}
+               universalNumber={UNIVERSAL_NUMBER}
+               acceptingRequests={djProfile?.accepting_requests}
+               toggleAccepting={toggleAccepting}
+               platform={selectedPlatform}
+               setPlatform={setSelectedPlatform}
+               platformsConfig={PLATFORMS}
+               isMinimized={isMinimized}
+               hasActiveVideo={!!videoModalId}
+             />
+          </div>
 
-                        <div>
-                            <h3 className="text-xl font-bold text-white mb-1">General Profile</h3>
-                            <p className="text-gray-500 text-sm">Manage your public DJ identity and keywords.</p>
-                        </div>
+          {/* MOBILE CONTROLS (Mobile Only) */}
+          <div className="lg:hidden space-y-4 mb-6">
+             {/* Row 1: Status & Platform */}
+             <div className="grid grid-cols-2 gap-3">
+                {/* Status Toggle */}
+                <button 
+                  onClick={toggleAccepting} 
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                    djProfile?.accepting_requests 
+                      ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                      : 'bg-red-500/10 border-red-500/20 text-red-400'
+                  }`}
+                >
+                   <Power size={14} />
+                   <span className="text-xs font-bold">{djProfile?.accepting_requests ? "Live" : "Paused"}</span>
+                </button>
 
-                        <div className="space-y-4">
-                             <div className="space-y-2">
-                                 <label className="text-sm font-medium text-gray-300">DJ Tag</label>
-                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Music size={16} className="text-gray-500" />
-                                    </div>
-                                    <input 
-                                        value={tag} 
-                                        onChange={(e) => setTag(e.target.value)} 
-                                        className="w-full bg-[#1b1b2e] border border-[#2a2a40] rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all" 
-                                        placeholder="e.g. DJ Joey" 
-                                    />
-                                 </div>
-                                 <p className="text-xs text-gray-500">Guests text this tag to join your session.</p>
-                            </div>
-
-                            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl flex gap-3">
-                                <div className="mt-0.5"><CheckCircle2 size={16} className="text-blue-400" /></div>
-                                <div className="space-y-1">
-                                    <p className="text-sm text-gray-300 font-medium">Texting Instructions</p>
-                                    <p className="text-xs text-gray-500">Tell your guests to text <span className="text-pink-400 font-bold">{tag || "TAG"}</span> to <span className="text-white font-mono">{formatPhoneNumber(universalNumber)}</span></p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* 2. GUEST CONTROLS */}
-                {activeSection === 'controls' && (
-                    <div className="space-y-8 max-w-lg">
-                        <div>
-                            <h3 className="text-xl font-bold text-white mb-1">Guest Controls</h3>
-                            <p className="text-gray-500 text-sm">Set limits to prevent spam and fair usage.</p>
-                        </div>
-
-                        <div className="p-6 bg-[#1b1b2e]/50 border border-white/5 rounded-2xl space-y-6">
-                            <div className="flex items-center gap-2 text-white font-medium pb-4 border-b border-white/5">
-                                <ShieldAlert size={18} className="text-pink-400" />
-                                <span>Rate Limiting</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Max Songs</label>
-                                    <input 
-                                        type="number" 
-                                        min="1" 
-                                        max="100"
-                                        value={limitCount} 
-                                        onChange={(e) => setLimitCount(e.target.value)} 
-                                        className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-xl px-4 py-3 text-white text-lg font-mono outline-none focus:border-pink-500 transition-colors" 
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Time Window (Hours)</label>
-                                    <input 
-                                        type="number" 
-                                        min="1" 
-                                        max="24"
-                                        value={limitHours} 
-                                        onChange={(e) => setLimitHours(e.target.value)} 
-                                        className="w-full bg-[#0e0e14] border border-[#2a2a40] rounded-xl px-4 py-3 text-white text-lg font-mono outline-none focus:border-pink-500 transition-colors" 
-                                    />
-                                </div>
-                            </div>
-                            <p className="text-sm text-gray-400 bg-black/20 p-3 rounded-lg border border-white/5">
-                                Logic: A single phone number can make <strong>{limitCount}</strong> requests every <strong>{limitHours}</strong> hour{limitHours > 1 ? 's' : ''}.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* 3. BLACKLIST */}
-                {activeSection === 'blacklist' && (
-                    <div className="space-y-6 h-full flex flex-col">
-                        <div>
-                            <h3 className="text-xl font-bold text-white mb-1">Blacklist</h3>
-                            <p className="text-gray-500 text-sm">Block specific phone numbers from making requests.</p>
-                        </div>
-
-                        <div className="flex gap-2">
-                             <input 
-                               value={newBanNumber}
-                               onChange={(e) => setNewBanNumber(e.target.value)}
-                               className="flex-1 min-w-0 bg-[#1b1b2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:border-red-500 outline-none transition-all"
-                               placeholder="Enter phone number..."
-                             />
-                             <button onClick={handleBan} className="bg-red-500/10 text-red-400 border border-red-500/20 px-4 md:px-6 py-2 rounded-xl hover:bg-red-500/20 font-medium transition-colors flex items-center gap-2 flex-shrink-0">
-                                 <Ban size={18} /> <span className="hidden sm:inline">Block</span> <span className="sm:hidden">Block</span>
-                             </button>
-                        </div>
-
-                        <div className="flex-1 bg-[#0e0e14] border border-white/5 rounded-2xl overflow-hidden flex flex-col">
-                            <div className="p-3 border-b border-white/5 bg-white/5 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between">
-                                <span>Blocked Number</span>
-                                <span>Action</span>
-                            </div>
-                            <div className="overflow-y-auto flex-1 p-2 space-y-1">
-                                {blacklist.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-gray-600 space-y-2">
-                                        <CheckCircle2 size={32} className="opacity-20" />
-                                        <span className="text-sm">No blocked numbers</span>
-                                    </div>
-                                ) : (
-                                    blacklist.map((item) => (
-                                        <div key={item.id} className="p-3 flex items-center justify-between group hover:bg-white/5 rounded-lg transition-colors">
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                                                    <Ban size={14} className="text-red-500" />
-                                                </div>
-                                                <span className="text-gray-300 font-mono truncate">{formatPhoneNumber(item.phone_number)}</span>
-                                            </div>
-                                            <button 
-                                              onClick={() => handleUnban(item.phone_number)}
-                                              className="p-2 hover:bg-white/10 rounded-lg text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
-                                              title="Unban"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* 4. ACCOUNT */}
-                {activeSection === 'account' && (
-                    <div className="space-y-8 max-w-lg">
-                        <div>
-                            <h3 className="text-xl font-bold text-white mb-1">Account Settings</h3>
-                            <p className="text-gray-500 text-sm">Manage your login credentials.</p>
-                        </div>
-
-                        <div className="bg-[#1b1b2e]/50 border border-white/5 rounded-2xl overflow-hidden divide-y divide-white/5">
-                            <div className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                                <div className="flex items-center gap-4 text-gray-400">
-                                    <div className="p-2 bg-white/5 rounded-lg"><Mail size={20} /></div>
-                                    <div>
-                                        <p className="text-sm font-medium text-white">Email Address</p>
-                                        <p className="text-xs text-gray-500">{user?.email}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                                <div className="flex items-center gap-4 text-gray-400">
-                                    <div className="p-2 bg-white/5 rounded-lg"><Lock size={20} /></div>
-                                    <div>
-                                        <p className="text-sm font-medium text-white">Password</p>
-                                        <p className="text-xs text-gray-500">Last changed recently</p>
-                                    </div>
-                                </div>
-                                <button onClick={handleResetPassword} disabled={resetLoading} className="text-xs bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg border border-white/5 font-medium transition-colors w-full md:w-auto">
-                                    {resetLoading ? "Sending..." : "Reset Password"}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* SAVE FOOTER (Only for sections that need saving) */}
-            {(activeSection === 'profile' || activeSection === 'controls') && (
-                <div className="p-4 border-t border-white/5 bg-[#16161f] flex justify-end">
-                    <button 
-                        onClick={handleSaveSettings} 
-                        disabled={loading} 
-                        className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-900/20 transition-all flex items-center gap-2 w-full md:w-auto justify-center"
-                    >
-                        {loading ? (
-                            <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> Saving...</span>
-                        ) : (
-                            <><Save size={18} /> Save Changes</>
-                        )}
-                    </button>
+                {/* Platform Selector */}
+                <div className="relative bg-[#12121a] rounded-xl border border-white/5">
+                   <select 
+                      value={selectedPlatform}
+                      onChange={(e) => setSelectedPlatform(e.target.value)}
+                      className="w-full h-full bg-transparent text-gray-300 text-xs font-medium px-3 py-0 appearance-none outline-none"
+                   >
+                      {Object.entries(PLATFORMS).map(([key, config]) => (
+                        <option key={key} value={key}>{config.name}</option>
+                      ))}
+                   </select>
+                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <ChevronDown size={14} className="text-gray-500" />
+                   </div>
                 </div>
-            )}
-         </div>
-       </div>
-    </div>
+             </div>
+
+             {/* Row 2: MOBILE REQUEST NUMBER DISPLAY */}
+             <div className="bg-[#12121a] rounded-xl border border-white/5 p-4 flex items-center justify-center text-center">
+                 <div className="flex flex-col items-center">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1">Text Requests To</p>
+                    <div className="flex items-center gap-2">
+                       <Phone size={14} className="text-pink-400" />
+                       {djProfile?.plan?.toLowerCase() === "headliner" ? (
+                          <span className="text-lg font-bold text-white tracking-wide">
+                            {formatPhoneNumber(djProfile?.twilio_number)}
+                          </span>
+                       ) : (
+                          <span className="text-sm text-gray-300">
+                             <span className="font-bold text-pink-400 text-base">{djProfile?.tag || "..."}</span> to <span className="font-bold text-white">{formatPhoneNumber(UNIVERSAL_NUMBER)}</span>
+                          </span>
+                       )}
+                    </div>
+                 </div>
+             </div>
+
+             {/* Expandable Chat */}
+             <div className="bg-[#12121a] rounded-xl border border-white/5 overflow-hidden">
+                <button 
+                  onClick={() => setIsChatExpanded(!isChatExpanded)} 
+                  className="w-full p-4 flex justify-between items-center text-sm font-medium text-gray-300 bg-[#16161f]"
+                >
+                   <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-green-500/10 text-green-400">
+                        <MessageSquare size={14} />
+                      </div>
+                      <span>Live Text Feed</span>
+                   </div>
+                   {isChatExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                
+                {isChatExpanded && (
+                   <div className="border-t border-white/5 h-[350px]">
+                      {djProfile?.id && (
+                        <LiveChat 
+                          djId={djProfile.id} 
+                          showHeader={false} 
+                          className="h-full mt-0 rounded-none border-0" 
+                        />
+                      )}
+                   </div>
+                )}
+             </div>
+          </div>
+
+          {/* MAIN CONTENT AREA */}
+          <div className="lg:col-span-3">
+             
+             {/* UPDATED: Tabs Layout (Pinned Trash Can) */}
+             <div className="flex items-center justify-between gap-3 mb-6">
+                {/* Scrollable Tabs Area */}
+                <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                    {TABS.map(tab => (
+                      <button 
+                        key={tab.key}
+                        onClick={() => setFilterStatus(tab.key)}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border flex-shrink-0 ${
+                          filterStatus === tab.key 
+                          ? "bg-white/10 border-white/20 text-white" 
+                          : "bg-[#12121a] border-transparent text-gray-400 hover:bg-white/5"
+                        }`}
+                      >
+                        {tab.label} <span className="ml-1 text-xs opacity-50">{tab.key === 'all' ? stats.total : stats[tab.key]}</span>
+                      </button>
+                    ))}
+                </div>
+
+                {/* Fixed "Clear All" Button */}
+                <button 
+                  onClick={clearAllFiltered} 
+                  disabled={filteredRequests.length === 0}
+                  className={`flex-shrink-0 p-2.5 rounded-xl transition-colors border ${
+                    filteredRequests.length > 0 
+                      ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' 
+                      : 'bg-white/5 border-transparent text-gray-600 pointer-events-none' 
+                  }`}
+                  title="Clear List"
+                >
+                  <Trash2 size={18} />
+                </button>
+             </div>
+
+            <DragDropContext onDragEnd={handleOnDragEnd}>
+                 <RequestList 
+                   requests={filteredRequests}
+                   loading={loading}
+                   filterStatus={filterStatus}
+                   currentPlayingId={playingRequestId}
+                   onPlay={handlePlayRequest}
+                   onUpdateStatus={handleUpdateStatus}
+                   onDelete={handleDelete}
+                   platformPreference={selectedPlatform}
+                   tabLabel={TABS.find(t => t.key === filterStatus)?.label}
+                   droppableId="request-list" 
+                 />
+            </DragDropContext>
+
+            {/* SPACER DIV */}
+            <div className={`transition-all duration-300 w-full ${videoModalId && isMinimized ? "h-64" : "h-24"}`} />
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }

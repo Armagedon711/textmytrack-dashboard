@@ -207,9 +207,35 @@ export default function Dashboard() {
 
   const toggleAccepting = async () => {
     if(!djProfile) return;
+    
+    // 1. Calculate the NEW state (we are toggling)
+    const isTurningOff = djProfile.accepting_requests === true;
     const newVal = !djProfile.accepting_requests;
+
+    // 2. Update UI & DB Immediately
     setDjProfile(prev => ({ ...prev, accepting_requests: newVal }));
     await supabase.from("dj_profiles").update({ accepting_requests: newVal }).eq("id", user.id);
+
+    // 3. IF TURNING OFF -> Check for Links & Trigger Popup
+    if (isTurningOff) {
+        // Check if they have links set up
+        if (djProfile.tip_link || djProfile.review_link) {
+            const shouldSend = confirm(
+                "🏁 You just paused requests!\n\n" +
+                "Would you like to text your Tip Link & Review Link to everyone who requested a song in the last 24 hours?"
+            );
+
+            if (shouldSend) {
+                // Call API to broadcast the message
+                await fetch("/api/broadcast-links", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dj_id: user.id })
+                });
+                alert("Links sent to recent guests! 🚀");
+            }
+        }
+    }
   };
 
   const handleOnDragEnd = async (result) => {
