@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// 1. PASTE YOUR COPIED N8N URL HERE (Keep the quotes!)
-const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
+// REPLACE THIS WITH YOUR COPIED N8N URL (Keep the quotes!)
+const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook-test/broadcast-links"; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,11 +11,12 @@ const supabase = createClient(
 
 export async function POST(req) {
   try {
-    console.log("🚀 Broadcast initiated...");
     const body = await req.json();
     const { dj_id } = body;
 
-    // 2. Get DJ's Links & Phone Number
+    console.log(`📡 Starting Broadcast for DJ: ${dj_id}`);
+
+    // 1. Get DJ's Links & Phone Number
     const { data: dj, error: djError } = await supabase
       .from('dj_profiles')
       .select('tip_link, review_link, tag, twilio_number') 
@@ -27,34 +28,42 @@ export async function POST(req) {
         return NextResponse.json({ success: false, error: "DJ not found" });
     }
 
-    // 3. Find Unique Requesters from last 24 hours
+    // 2. Calculate "Yesterday"
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
-    // Query 'requests' table for 'requestedBy' column
+    console.log(`🔍 Searching for requests after: ${yesterday}`);
+
+    // 3. Find Unique Requesters
+    // FIX: Changed 'created_at' to 'requestedAt' based on your CSV
     const { data: recentRequests, error: reqError } = await supabase
       .from('requests')
       .select('requestedBy')
       .eq('dj_id', dj_id)
-      .gte('created_at', yesterday);
+      .gte('requestedAt', yesterday); 
 
     if (reqError) {
-        console.error("❌ Database Error:", reqError);
+        console.error("❌ Database Error querying requests:", reqError);
         return NextResponse.json({ error: reqError.message }, { status: 500 });
     }
 
+    console.log(`📄 Raw DB Result: Found ${recentRequests?.length || 0} rows.`);
+
     if (!recentRequests || recentRequests.length === 0) {
-        console.log("⚠️ No recent requests found.");
-        return NextResponse.json({ success: true, count: 0, message: "No recent listeners" });
+        return NextResponse.json({ success: true, count: 0, message: "No recent listeners found in time window." });
     }
 
     // 4. Filter Unique Numbers
+    // We filter for valid length (>5) to skip empty strings or junk data
     const uniqueNumbers = [...new Set(
         recentRequests
           .map(r => r.requestedBy)
-          .filter(num => num && num.length > 5) // Basic filter for valid-ish numbers
+          .filter(num => num && num.length > 5) 
     )];
 
-    console.log(`✅ found ${uniqueNumbers.length} unique numbers. Sending to n8n...`);
+    console.log(`✅ Filtered to ${uniqueNumbers.length} unique numbers:`, uniqueNumbers);
+
+    if (uniqueNumbers.length === 0) {
+        return NextResponse.json({ success: true, count: 0, message: "No valid phone numbers found." });
+    }
 
     // 5. Send to n8n
     const n8nResponse = await fetch(N8N_BROADCAST_URL, {
@@ -78,7 +87,7 @@ export async function POST(req) {
     return NextResponse.json({ success: true, count: uniqueNumbers.length });
 
   } catch (error) {
-    console.error("❌ Critical Error:", error);
+    console.error("❌ Critical API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
