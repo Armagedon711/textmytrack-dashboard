@@ -315,6 +315,7 @@ export default function Dashboard() {
         djProfile={djProfile}
         user={user}
         universalNumber={UNIVERSAL_NUMBER}
+        onSave={(newProfile) => setDjProfile(prev => ({ ...prev, ...newProfile }))}
       />
 
       {/* --- ADD SONG MODAL --- */}

@@ -27,7 +27,8 @@ export default function SettingsModal({
   onClose, 
   djProfile, 
   user, 
-  universalNumber 
+  universalNumber,
+  onSave 
 }) {
   const [activeSection, setActiveSection] = useState("profile"); 
   
@@ -100,6 +101,7 @@ export default function SettingsModal({
 
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to update settings");
+      if (onSave) onSave({ tag, request_limit_count: limitCount, request_limit_hours: limitHours, tip_link: tipLink, review_link: reviewLink });
       
       setStatus({ type: "success", msg: "Settings saved successfully!" });
       setTimeout(() => setStatus({ type: "", msg: "" }), 3000);
