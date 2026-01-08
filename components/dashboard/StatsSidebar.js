@@ -84,11 +84,16 @@ export default function StatsSidebar({
       </div>
 
       {/* Live Chat Feed */}
-      {/* Fixed height calculation: Full screen height minus 520px (Headers + Bottom Player Area) */}
+      {/* Height Calculation: 
+          100vh (Full Screen) 
+          - 300px (Approx height of Cards above + margins) 
+          - 200px (Desired bottom clearance) 
+          = 500px total subtraction
+      */}
       {djProfile?.id && (
         <LiveChat 
           djId={djProfile.id} 
-          className="h-[calc(100vh-445px)] min-h-[300px]" 
+          className="h-[calc(100vh-500px)] min-h-[300px]" 
         />
       )}
     </div>
