@@ -9,7 +9,7 @@ const supabase = createClient(
 // FIX: Hardcode the correct base URL structure or use a dedicated ENV variable
 // Ideally, set N8N_BROADCAST_URL in your .env.local to the exact URL from the n8n node.
 // For now, this fallback covers the standard path:
-const N8N_BROADCAST_URL = process.env.N8N_BROADCAST_URL || "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
+const N8N_BROADCAST_URL = process.env.N8N_BROADCAST_URL || "https://n8n.theprotoforge.com/webhook-test/broadcast-links"; 
 
 export async function POST(req) {
   try {
