@@ -3,7 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 
 // Your n8n URL
 const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
-const BASE_URL = "https://textmytrack-dashboard.vercel.app"; 
+
+// UPDATED DOMAIN
+const BASE_URL = "https://dashboard.textmytrack.com"; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -32,7 +34,7 @@ export async function POST(req) {
       .from('requests')
       .select('requestedBy')
       .eq('dj_id', dj_id)
-      .gte('requestedAt', yesterday);
+      .gte('requestedAt', yesterday); // Using requestedAt as per your DB schema
 
     if (!recentRequests?.length) {
         return NextResponse.json({ success: true, count: 0, message: "No listeners found" });
@@ -50,7 +52,7 @@ export async function POST(req) {
 
         // Generate Tip Link (if DJ has one)
         if (dj.tip_link) {
-            const slug = generateSlug(); // e.g. "a9z2B"
+            const slug = generateSlug(); 
             tipShortUrl = `${BASE_URL}/s/${slug}`;
             
             shortLinksToInsert.push({
@@ -88,12 +90,13 @@ export async function POST(req) {
         });
     });
 
-    // 4. Batch Insert Short Links to DB (Crucial Step)
+    // 4. Batch Insert Short Links to DB
     if (shortLinksToInsert.length > 0) {
         const { error } = await supabase.from('short_links').insert(shortLinksToInsert);
         if (error) {
             console.error("Failed to save short links:", error);
-            // We proceed anyway, but links might fail. In production, handle this better.
+            // If DB save fails, we return error so we don't send broken links
+            return NextResponse.json({ success: false, error: "Database save failed" });
         }
     }
 

@@ -9,7 +9,9 @@ const supabase = createClient(
 );
 
 export async function GET(request, { params }) {
-  const { slug } = params;
+  // FIX: Await params to handle both Next.js 14 and 15 safely
+  const resolvedParams = await params;
+  const { slug } = resolvedParams;
 
   if (!slug) return NextResponse.redirect(new URL("/", request.url));
 
@@ -22,16 +24,19 @@ export async function GET(request, { params }) {
       .single();
 
     if (!link) {
+      console.error("Link not found for slug:", slug);
       return NextResponse.redirect(new URL("/", request.url));
     }
 
     // 2. Log the Click (Tracking)
-    // We log exactly WHO clicked and WHEN
-    await supabase.from("link_clicks").insert({
+    // We run this in the background (no await) to make the redirect faster
+    supabase.from("link_clicks").insert({
       dj_id: link.dj_id,
       phone_number: link.phone_number,
       link_type: link.link_type,
       destination_url: link.final_url
+    }).then(({ error }) => {
+        if (error) console.error("Click logging failed:", error);
     });
 
     // 3. Redirect to the Real URL (Venmo/Google)
