@@ -3,12 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 
 // Your n8n URL
 const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
-const BASE_URL = "https://textmytrack-dashboard.vercel.app"; // Change to your real domain
+const BASE_URL = "https://textmytrack-dashboard.vercel.app"; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// Helper to generate random 6-char slug
+const generateSlug = () => Math.random().toString(36).substring(2, 8);
 
 export async function POST(req) {
   try {
@@ -35,39 +38,70 @@ export async function POST(req) {
         return NextResponse.json({ success: true, count: 0, message: "No listeners found" });
     }
 
-    // Filter unique numbers
     const uniqueNumbers = [...new Set(recentRequests.map(r => r.requestedBy).filter(n => n && n.length > 5))];
 
-    // 3. BUILD UNIQUE MESSAGES
-    // We create a custom payload for EACH user containing their specific tracking link
-    const broadcastPayload = uniqueNumbers.map(number => {
-        // Encode phone number to be URL-safe
-        const encodedPhone = encodeURIComponent(number);
-        
-        // Create the tracking links
-        // e.g. textmytrack.com/click?dj=123&t=tip&u=+1555...
-        const tipLink = dj.tip_link ? `${BASE_URL}/click?dj=${dj_id}&t=tip&u=${encodedPhone}` : null;
-        const reviewLink = dj.review_link ? `${BASE_URL}/click?dj=${dj_id}&t=review&u=${encodedPhone}` : null;
+    // 3. GENERATE SHORT LINKS
+    const shortLinksToInsert = [];
+    const broadcastPayload = [];
 
+    uniqueNumbers.forEach(phone => {
+        let tipShortUrl = null;
+        let reviewShortUrl = null;
+
+        // Generate Tip Link (if DJ has one)
+        if (dj.tip_link) {
+            const slug = generateSlug(); // e.g. "a9z2B"
+            tipShortUrl = `${BASE_URL}/s/${slug}`;
+            
+            shortLinksToInsert.push({
+                slug: slug,
+                dj_id: dj_id,
+                phone_number: phone,
+                link_type: 'tip',
+                final_url: dj.tip_link
+            });
+        }
+
+        // Generate Review Link (if DJ has one)
+        if (dj.review_link) {
+            const slug = generateSlug(); 
+            reviewShortUrl = `${BASE_URL}/s/${slug}`;
+
+            shortLinksToInsert.push({
+                slug: slug,
+                dj_id: dj_id,
+                phone_number: phone,
+                link_type: 'review',
+                final_url: dj.review_link
+            });
+        }
+
+        // Build the SMS Message
         const message = `Thanks for partying with ${dj.tag || "us"}! 🎵\n\n` + 
-                        (tipLink ? `Support the DJ: ${tipLink}\n` : "") + 
-                        (reviewLink ? `Leave a review: ${reviewLink}` : "");
+                        (tipShortUrl ? `Tip the DJ: ${tipShortUrl}\n` : "") + 
+                        (reviewShortUrl ? `Rate the night: ${reviewShortUrl}` : "");
 
-        return {
-            to: number,
+        broadcastPayload.push({
+            to: phone,
             from: dj.twilio_number,
             message: message
-        };
+        });
     });
 
-    console.log(`Generated ${broadcastPayload.length} unique messages.`);
+    // 4. Batch Insert Short Links to DB (Crucial Step)
+    if (shortLinksToInsert.length > 0) {
+        const { error } = await supabase.from('short_links').insert(shortLinksToInsert);
+        if (error) {
+            console.error("Failed to save short links:", error);
+            // We proceed anyway, but links might fail. In production, handle this better.
+        }
+    }
 
-    // 4. Send the Array to n8n
+    // 5. Send to n8n
     if (broadcastPayload.length > 0) {
         await fetch(N8N_BROADCAST_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // We send the 'broadcasts' array directly
             body: JSON.stringify({ broadcasts: broadcastPayload })
         });
     }
