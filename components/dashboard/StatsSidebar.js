@@ -93,7 +93,7 @@ export default function StatsSidebar({
       {djProfile?.id && (
         <LiveChat 
           djId={djProfile.id} 
-          className="h-[calc(100vh-300px)] min-h-[450px]" 
+          className="h-[calc(100vh-450px)] min-h-[200px]" 
         />
       )}
     </div>
