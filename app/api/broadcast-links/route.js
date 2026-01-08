@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// REPLACE THIS WITH YOUR COPIED N8N URL (Keep the quotes!)
+// Your n8n URL
 const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
+const BASE_URL = "https://textmytrack-dashboard.vercel.app"; // Change to your real domain
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,83 +12,70 @@ const supabase = createClient(
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { dj_id } = body;
+    const { dj_id } = await req.json();
 
-    console.log(`📡 Starting Broadcast for DJ: ${dj_id}`);
-
-    // 1. Get DJ's Links & Phone Number
-    const { data: dj, error: djError } = await supabase
+    // 1. Get DJ Data
+    const { data: dj } = await supabase
       .from('dj_profiles')
       .select('tip_link, review_link, tag, twilio_number') 
       .eq('id', dj_id)
       .single();
 
-    if (djError || !dj) {
-        console.error("❌ DJ Not Found:", djError);
-        return NextResponse.json({ success: false, error: "DJ not found" });
-    }
+    if (!dj) return NextResponse.json({ success: false, error: "DJ not found" });
 
-    // 2. Calculate "Yesterday"
+    // 2. Find Recent Listeners
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    console.log(`🔍 Searching for requests after: ${yesterday}`);
-
-    // 3. Find Unique Requesters
-    // FIX: Changed 'created_at' to 'requestedAt' based on your CSV
-    const { data: recentRequests, error: reqError } = await supabase
+    const { data: recentRequests } = await supabase
       .from('requests')
       .select('requestedBy')
       .eq('dj_id', dj_id)
-      .gte('requestedAt', yesterday); 
+      .gte('requestedAt', yesterday);
 
-    if (reqError) {
-        console.error("❌ Database Error querying requests:", reqError);
-        return NextResponse.json({ error: reqError.message }, { status: 500 });
+    if (!recentRequests?.length) {
+        return NextResponse.json({ success: true, count: 0, message: "No listeners found" });
     }
 
-    console.log(`📄 Raw DB Result: Found ${recentRequests?.length || 0} rows.`);
+    // Filter unique numbers
+    const uniqueNumbers = [...new Set(recentRequests.map(r => r.requestedBy).filter(n => n && n.length > 5))];
 
-    if (!recentRequests || recentRequests.length === 0) {
-        return NextResponse.json({ success: true, count: 0, message: "No recent listeners found in time window." });
-    }
+    // 3. BUILD UNIQUE MESSAGES
+    // We create a custom payload for EACH user containing their specific tracking link
+    const broadcastPayload = uniqueNumbers.map(number => {
+        // Encode phone number to be URL-safe
+        const encodedPhone = encodeURIComponent(number);
+        
+        // Create the tracking links
+        // e.g. textmytrack.com/click?dj=123&t=tip&u=+1555...
+        const tipLink = dj.tip_link ? `${BASE_URL}/click?dj=${dj_id}&t=tip&u=${encodedPhone}` : null;
+        const reviewLink = dj.review_link ? `${BASE_URL}/click?dj=${dj_id}&t=review&u=${encodedPhone}` : null;
 
-    // 4. Filter Unique Numbers
-    // We filter for valid length (>5) to skip empty strings or junk data
-    const uniqueNumbers = [...new Set(
-        recentRequests
-          .map(r => r.requestedBy)
-          .filter(num => num && num.length > 5) 
-    )];
+        const message = `Thanks for partying with ${dj.tag || "us"}! 🎵\n\n` + 
+                        (tipLink ? `Support the DJ: ${tipLink}\n` : "") + 
+                        (reviewLink ? `Leave a review: ${reviewLink}` : "");
 
-    console.log(`✅ Filtered to ${uniqueNumbers.length} unique numbers:`, uniqueNumbers);
-
-    if (uniqueNumbers.length === 0) {
-        return NextResponse.json({ success: true, count: 0, message: "No valid phone numbers found." });
-    }
-
-    // 5. Send to n8n
-    const n8nResponse = await fetch(N8N_BROADCAST_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            numbers: uniqueNumbers,
-            from: dj.twilio_number, 
-            message: `Thanks for partying with ${dj.tag || "us"}! 🎵\n\n` + 
-                    (dj.tip_link ? `Support the DJ: ${dj.tip_link}\n` : "") + 
-                    (dj.review_link ? `Leave a review: ${dj.review_link}` : "")
-        })
+        return {
+            to: number,
+            from: dj.twilio_number,
+            message: message
+        };
     });
 
-    if (!n8nResponse.ok) {
-        const errorText = await n8nResponse.text();
-        console.error("❌ n8n Error:", errorText);
-        return NextResponse.json({ error: "n8n failed: " + errorText }, { status: 500 });
+    console.log(`Generated ${broadcastPayload.length} unique messages.`);
+
+    // 4. Send the Array to n8n
+    if (broadcastPayload.length > 0) {
+        await fetch(N8N_BROADCAST_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // We send the 'broadcasts' array directly
+            body: JSON.stringify({ broadcasts: broadcastPayload })
+        });
     }
 
     return NextResponse.json({ success: true, count: uniqueNumbers.length });
 
   } catch (error) {
-    console.error("❌ Critical API Error:", error);
+    console.error("Broadcast Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
