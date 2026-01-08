@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 export async function GET(request, { params }) {
-  // FIX: Await params to handle both Next.js 14 and 15 safely
+  // Await params for Next.js 15+ compatibility
   const resolvedParams = await params;
   const { slug } = resolvedParams;
 
@@ -29,17 +29,19 @@ export async function GET(request, { params }) {
     }
 
     // 2. Log the Click (Tracking)
-    // We run this in the background (no await) to make the redirect faster
-    supabase.from("link_clicks").insert({
+    // FIX: We MUST await this, or the Edge function kills it before it saves.
+    const { error: logError } = await supabase.from("link_clicks").insert({
       dj_id: link.dj_id,
       phone_number: link.phone_number,
       link_type: link.link_type,
       destination_url: link.final_url
-    }).then(({ error }) => {
-        if (error) console.error("Click logging failed:", error);
     });
 
-    // 3. Redirect to the Real URL (Venmo/Google)
+    if (logError) {
+        console.error("Click logging failed:", logError);
+    }
+
+    // 3. Redirect to the Real URL
     return NextResponse.redirect(link.final_url);
 
   } catch (error) {
