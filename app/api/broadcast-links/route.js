@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // REPLACE THIS WITH YOUR COPIED N8N URL (Keep the quotes!)
-const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook-test/broadcast-links"; 
+const N8N_BROADCAST_URL = "https://n8n.theprotoforge.com/webhook/broadcast-links"; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
