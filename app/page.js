@@ -267,22 +267,28 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = useCallback((req, fromAutoplay = false) => {
+  const handlePlayRequest = useCallback((req, options = {}) => {
       // 1. Set the video and current request
       setVideoModalId(req.youtube_video_id);
       setCurrentPlayingRequest(req);
       setPlayingRequestId(req.id);
 
-      // 2. If it's a manual click (NOT from autoplay), maximize the player
-      if (fromAutoplay !== true) {
+      // 2. Determine if this is a genuine Autoplay event
+      // We check specifically for the object { autoplay: true }
+      // This ignores the legacy 'true' boolean that RequestList might send
+      const isAutoplay = options?.autoplay === true;
+
+      if (!isAutoplay) {
+        // MANUAL CLICK: Open the player and stop autoplay mode
         setIsMinimized(false);
         setAutoPlay(false); 
       } else {
+        // AUTOPLAY: Keep current minimized state and continue autoplay mode
         setAutoPlay(true); 
       }
     }, []);
 
-    const handleNextSong = useCallback(() => {
+  const handleNextSong = useCallback(() => {
       if (!nextSong) return;
 
       // Only auto-mark as played if the song was already in the Approved tab.
@@ -290,9 +296,10 @@ export default function Dashboard() {
         handleUpdateStatus(currentPlayingRequest.id, "played");
       }
 
-      // Pass 'true' to signal this is an autoplay and should stay minimized
-      handlePlayRequest(nextSong, true);
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Fixed syntax here
+      // FIX: Pass an object { autoplay: true } so handlePlayRequest knows 
+      // for sure that this is an automatic action, not a user click.
+      handlePlayRequest(nextSong, { autoplay: true });
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
   
     
   return (
