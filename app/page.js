@@ -284,19 +284,17 @@ export default function Dashboard() {
   };
 
   const handleNextSong = useCallback(() => {
-    if (autoPlay && nextSong) {
-      if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
-      setTimeout(() => {
-        setPlayingRequestId(nextSong.id);
-        setVideoModalId(nextSong.youtube_video_id);
-      }, 100);
-    } else {
-       setVideoModalId(null);
-       setPlayingRequestId(null);
-    }
-  }, [autoPlay, nextSong, currentPlayingRequest]);
+      if (!nextSong) return;
 
+      // FIX: Only auto-mark as played if the song was already in the Approved tab.
+      if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
+        handleUpdateStatus(currentPlayingRequest.id, "played");
+      }
 
+      // Move to the next song in the current tab
+      handlePlayRequest(nextSong, true);
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Corrected closing and dependencies
+    
   return (
     <main 
       className="
@@ -376,7 +374,7 @@ export default function Dashboard() {
               onClick={() => setShowAddSong(true)} 
               className="p-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg shadow-lg shadow-pink-900/20 flex items-center gap-2 transition-all"
             >
-              <Plus size={18} /> <span className="hidden sm:block font-bold">Add Song</span>
+              <Plus size={18} /> <span className="hidden sm:block">Add Song</span>
             </button>
 
             <button onClick={() => setShowSettings(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 flex items-center gap-2">
