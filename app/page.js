@@ -267,11 +267,17 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = (req, isInternalPlayer) => {
+  // In page.js
+
+  const handlePlayRequest = (req, isInternalPlayer, preserveState = false) => {
     if(isInternalPlayer && req.youtube_video_id) {
        setVideoModalId(req.youtube_video_id);
        setPlayingRequestId(req.id);
-       setIsMinimized(false);
+       
+       // Only force maximize if preserveState is false
+       if (!preserveState) {
+         setIsMinimized(false);
+       }
     } else {
        let url = null;
        if (selectedPlatform === 'spotify' && req.spotify_url) url = req.spotify_url;
@@ -283,6 +289,8 @@ export default function Dashboard() {
     }
   };
 
+  // In page.js
+
   const handleNextSong = useCallback(() => {
       if (!nextSong) return;
 
@@ -292,8 +300,9 @@ export default function Dashboard() {
       }
 
       // Move to the next song in the current tab
-      handlePlayRequest(nextSong, true);
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Corrected closing and dependencies
+      // Pass 'true' as the 3rd argument to keep the player minimized if it currently is
+      handlePlayRequest(nextSong, true, true);
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
     
   return (
     <main 
