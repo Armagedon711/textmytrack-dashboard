@@ -90,21 +90,26 @@ export default function Dashboard() {
   [requests, playingRequestId]);
 
   // --- Next Song Logic ---
-  const nextSong = useMemo(() => {
-    if (!currentPlayingRequest) return null;
-    
-    const queue = requests
-        .filter(r => r.status === 'approved' && r.youtube_video_id)
-        .sort((a, b) => (a.position || 0) - (b.position || 0));
-    
-    if (queue.length === 0) return null;
+    const nextSong = useMemo(() => {
+      if (!currentPlayingRequest) return null;
+      
+      // CHANGE: Use filteredRequests (the current tab) instead of hardcoding 'approved'
+      // This ensures we only queue songs visible in your current view
+      const queue = filteredRequests.filter(r => r.youtube_video_id);
+      
+      if (queue.length === 0) return null;
 
-    const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
-    const next = queue[currentIndex + 1];
-    
-    return next || queue[0];
-  }, [requests, currentPlayingRequest]);
+      const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
+      
+      // If the current song isn't in the current tab (e.g., you just switched tabs), 
+      // start playing the first song available in this new view.
+      if (currentIndex === -1) return queue[0];
 
+      const next = queue[currentIndex + 1];
+      
+      // Return the next song in the tab, or loop back to the first song of this tab
+      return next || queue[0];
+    }, [filteredRequests, currentPlayingRequest]); // Added filteredRequests as a dependency
 
   // --- Data Loading & Auth ---
   useEffect(() => {
