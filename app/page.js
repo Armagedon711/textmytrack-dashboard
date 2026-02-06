@@ -267,40 +267,42 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = useCallback((req, options = {}) => {
-      // 1. Set the video and current request
-      setVideoModalId(req.youtube_video_id);
-      setCurrentPlayingRequest(req);
-      setPlayingRequestId(req.id);
+  // --- ROBUST PLAY HANDLER ---
+  const handlePlayRequest = useCallback((req, arg2) => {
+    // 1. Basic Setup
+    setVideoModalId(req.youtube_video_id);
+    setCurrentPlayingRequest(req);
+    setPlayingRequestId(req.id);
 
-      // 2. Determine if this is a genuine Autoplay event
-      // We check specifically for the object { autoplay: true }
-      // This ignores the legacy 'true' boolean that RequestList might send
-      const isAutoplay = options?.autoplay === true;
+    // 2. ROOT CAUSE FIX: Determine source of the click
+    // If arg2 is the object { autoplay: true }, it's an automatic next song.
+    // If arg2 is boolean (true/false) or undefined, it's a manual click from RequestList.
+    const isExplicitAutoplay = typeof arg2 === 'object' && arg2?.autoplay === true;
 
-      if (!isAutoplay) {
-        // MANUAL CLICK: Open the player and stop autoplay mode
-        setIsMinimized(false);
-        setAutoPlay(false); 
-      } else {
-        // AUTOPLAY: Keep current minimized state and continue autoplay mode
-        setAutoPlay(true); 
-      }
-    }, []);
+    if (isExplicitAutoplay) {
+      // SCENARIO: Song finished, next one starting automatically.
+      // ACTION: Keep the player exactly as it is (minimized or open).
+      setAutoPlay(true);
+    } else {
+      // SCENARIO: DJ clicked a song manually.
+      // ACTION: Force the player to OPEN so you can see what you clicked.
+      setAutoPlay(false);
+      setIsMinimized(false); 
+    }
+  }, []);
 
+  // --- NEXT SONG LOGIC ---
   const handleNextSong = useCallback(() => {
-      if (!nextSong) return;
+    if (!nextSong) return;
 
-      // Only auto-mark as played if the song was already in the Approved tab.
-      if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
-        handleUpdateStatus(currentPlayingRequest.id, "played");
-      }
+    // Logic: Only move to "Played" if it was strictly in the "Approved" tab
+    if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
+      handleUpdateStatus(currentPlayingRequest.id, "played");
+    }
 
-      // FIX: Pass an object { autoplay: true } so handlePlayRequest knows 
-      // for sure that this is an automatic action, not a user click.
-      handlePlayRequest(nextSong, { autoplay: true });
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
-  
+    // TRIGGER: Pass the specific object so handlePlayRequest knows to keep it minimized
+    handlePlayRequest(nextSong, { autoplay: true });
+  }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
     
   return (
     <main 
