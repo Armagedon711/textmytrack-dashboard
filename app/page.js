@@ -267,32 +267,33 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = useCallback((req, isAutoplay = false) => {
+  const handlePlayRequest = useCallback((req, fromAutoplay = false) => {
       // 1. Set the video and current request
       setVideoModalId(req.youtube_video_id);
       setCurrentPlayingRequest(req);
       setPlayingRequestId(req.id);
 
-      // 2. Logic Check: If it's a manual click (not an autoplay), 
-      // we force the player to maximize so the DJ sees what they just clicked.
-      if (isAutoplay !== true) {
+      // 2. If it's a manual click (NOT from autoplay), maximize the player
+      if (fromAutoplay !== true) {
         setIsMinimized(false);
-        setAutoPlay(false); // DJ took manual control
+        setAutoPlay(false); 
       } else {
-        setAutoPlay(true); // Stay in autoplay mode
+        setAutoPlay(true); 
       }
     }, []);
 
-  const handleNextSong = useCallback(() => {
+    const handleNextSong = useCallback(() => {
       if (!nextSong) return;
 
+      // Only auto-mark as played if the song was already in the Approved tab.
       if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
         handleUpdateStatus(currentPlayingRequest.id, "played");
       }
 
-      // This 'true' tells handlePlayRequest: "I'm an autoplay, don't pop up"
-      handlePlayRequest(nextSong, true); 
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
+      // Pass 'true' to signal this is an autoplay and should stay minimized
+      handlePlayRequest(nextSong, true);
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Fixed syntax here
+  
     
   return (
     <main 
