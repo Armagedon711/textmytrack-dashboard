@@ -267,21 +267,18 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = (req, isInternalPlayer) => {
-    if(isInternalPlayer && req.youtube_video_id) {
-       setVideoModalId(req.youtube_video_id);
-       setPlayingRequestId(req.id);
-       setIsMinimized(false);
-    } else {
-       let url = null;
-       if (selectedPlatform === 'spotify' && req.spotify_url) url = req.spotify_url;
-       else if (selectedPlatform === 'apple' && req.apple_url) url = req.apple_url;
-       else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) url = req.soundcloud_url;
-       else if (req.url) url = req.url;
-       
-       if(url) window.open(url, '_blank');
-    }
-  };
+  const handlePlayRequest = useCallback((req, shouldAutoPlay = false) => {
+      setVideoModalId(req.youtube_video_id);
+      setCurrentPlayingRequest(req);
+      setPlayingRequestId(req.id);
+      setAutoPlay(shouldAutoPlay);
+
+      // FIX: Only force the player to maximize if it's a manual click.
+      // If it's an autoplay (shouldAutoPlay is true), keep the current minimized state.
+      if (!shouldAutoPlay) {
+        setIsMinimized(false);
+      }
+    }, []);
 
   const handleNextSong = useCallback(() => {
       if (!nextSong) return;
