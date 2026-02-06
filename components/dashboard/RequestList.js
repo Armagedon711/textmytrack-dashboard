@@ -66,8 +66,7 @@ export default function RequestList({
                 index={index}
                 isCurrentlyPlaying={currentPlayingId === req.id}
                 hasUrl={shouldUseInternalPlayer || hasExternalUrlForSelectedPlatform}
-                // CHANGE: Just pass 'req'. Do not pass the boolean 'shouldUseInternalPlayer'
-                onPlay={(r) => onPlay(r)} 
+                onPlay={(r) => onPlay(r, shouldUseInternalPlayer)}
                 onUpdateStatus={onUpdateStatus}
                 onDelete={onDelete}
               />
