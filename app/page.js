@@ -267,30 +267,32 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  const handlePlayRequest = useCallback((req, shouldAutoPlay = false) => {
+  const handlePlayRequest = useCallback((req, isAutoplay = false) => {
+      // 1. Set the video and current request
       setVideoModalId(req.youtube_video_id);
       setCurrentPlayingRequest(req);
       setPlayingRequestId(req.id);
-      setAutoPlay(shouldAutoPlay);
 
-      // FIX: Only force the player to maximize if it's a manual click.
-      // If it's an autoplay (shouldAutoPlay is true), keep the current minimized state.
-      if (!shouldAutoPlay) {
+      // 2. Logic Check: If it's a manual click (not an autoplay), 
+      // we force the player to maximize so the DJ sees what they just clicked.
+      if (isAutoplay !== true) {
         setIsMinimized(false);
+        setAutoPlay(false); // DJ took manual control
+      } else {
+        setAutoPlay(true); // Stay in autoplay mode
       }
     }, []);
 
   const handleNextSong = useCallback(() => {
       if (!nextSong) return;
 
-      // FIX: Only auto-mark as played if the song was already in the Approved tab.
       if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
         handleUpdateStatus(currentPlayingRequest.id, "played");
       }
 
-      // Move to the next song in the current tab
-      handlePlayRequest(nextSong, true);
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Corrected closing and dependencies
+      // This 'true' tells handlePlayRequest: "I'm an autoplay, don't pop up"
+      handlePlayRequest(nextSong, true); 
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
     
   return (
     <main 
