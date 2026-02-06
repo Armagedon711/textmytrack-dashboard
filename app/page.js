@@ -267,40 +267,42 @@ export default function Dashboard() {
     if (error) console.error("Reorder failed", error);
   };
 
-  // --- ROBUST PLAY HANDLER ---
+  // --- 1. ROBUST PLAY HANDLER ---
   const handlePlayRequest = useCallback((req, arg2) => {
-    // 1. Basic Setup
+    // Basic Setup: Load the song
     setVideoModalId(req.youtube_video_id);
     setCurrentPlayingRequest(req);
     setPlayingRequestId(req.id);
 
-    // 2. ROOT CAUSE FIX: Determine source of the click
-    // If arg2 is the object { autoplay: true }, it's an automatic next song.
-    // If arg2 is boolean (true/false) or undefined, it's a manual click from RequestList.
-    const isExplicitAutoplay = typeof arg2 === 'object' && arg2?.autoplay === true;
+    // INTELLIGENT CHECK:
+    // If arg2 is an object like { autoplay: true }, it's the system playing the next song.
+    // If arg2 is a boolean (true/false) or undefined, it's YOU clicking the list.
+    const isSystemAutoplay = typeof arg2 === 'object' && arg2?.autoplay === true;
 
-    if (isExplicitAutoplay) {
-      // SCENARIO: Song finished, next one starting automatically.
-      // ACTION: Keep the player exactly as it is (minimized or open).
+    if (isSystemAutoplay) {
+      // SCENARIO: Song finished, next one is starting automatically.
+      // ACTION: Respect the DJ's current setup. If minimized, stay minimized.
       setAutoPlay(true);
     } else {
-      // SCENARIO: DJ clicked a song manually.
-      // ACTION: Force the player to OPEN so you can see what you clicked.
+      // SCENARIO: You clicked a song manually.
+      // ACTION: Force the player to OPEN so you can see what you just clicked.
       setAutoPlay(false);
       setIsMinimized(false); 
     }
   }, []);
 
-  // --- NEXT SONG LOGIC ---
+  // --- 2. UPDATED NEXT SONG LOGIC ---
   const handleNextSong = useCallback(() => {
     if (!nextSong) return;
 
     // Logic: Only move to "Played" if it was strictly in the "Approved" tab
+    // (This keeps your Pending requests safe if you are just previewing them)
     if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
       handleUpdateStatus(currentPlayingRequest.id, "played");
     }
 
-    // TRIGGER: Pass the specific object so handlePlayRequest knows to keep it minimized
+    // TRIGGER: We pass a specific OBJECT now. 
+    // This tells the function above: "This is a System Autoplay"
     handlePlayRequest(nextSong, { autoplay: true });
   }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
     
