@@ -265,40 +265,35 @@ export default function Dashboard() {
 
     const { error } = await supabase.from('requests').upsert(updates);
     if (error) console.error("Reorder failed", error);
-  };  
+  };
 
-  const handlePlayRequest = useCallback((req, options) => {
-      // 1. Basic Setup
-      setVideoModalId(req.youtube_video_id);
-      setCurrentPlayingRequest(req);
-      setPlayingRequestId(req.id);
+  const handlePlayRequest = (req, isInternalPlayer) => {
+    if(isInternalPlayer && req.youtube_video_id) {
+       setVideoModalId(req.youtube_video_id);
+       setPlayingRequestId(req.id);
+       setIsMinimized(false);
+    } else {
+       let url = null;
+       if (selectedPlatform === 'spotify' && req.spotify_url) url = req.spotify_url;
+       else if (selectedPlatform === 'apple' && req.apple_url) url = req.apple_url;
+       else if (selectedPlatform === 'soundcloud' && req.soundcloud_url) url = req.soundcloud_url;
+       else if (req.url) url = req.url;
+       
+       if(url) window.open(url, '_blank');
+    }
+  };
 
-      // 2. CHECK: Is this a System Autoplay or a Manual Click?
-      // We check if 'options' is specifically the object { autoplay: true }
-      // We IGNORE simple booleans (like 'true') sent by RequestList
-      const isSystemAutoplay = typeof options === 'object' && options?.autoplay === true;
-
-      if (isSystemAutoplay) {
-        // It's the system playing the next song -> Keep current minimized state
-        setAutoPlay(true);
-      } else {
-        // It's YOU clicking the song -> Force player to OPEN
-        setAutoPlay(false);
-        setIsMinimized(false);
-      }
-    }, []);
-
-  // --- 2. UPDATED NEXT SONG LOGIC ---
   const handleNextSong = useCallback(() => {
       if (!nextSong) return;
 
+      // FIX: Only auto-mark as played if the song was already in the Approved tab.
       if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
         handleUpdateStatus(currentPlayingRequest.id, "played");
       }
 
-      // FIX: Send a specific object so handlePlayRequest knows it's automatic
-      handlePlayRequest(nextSong, { autoplay: true });
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
+      // Move to the next song in the current tab
+      handlePlayRequest(nextSong, true);
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]); // Corrected closing and dependencies
     
   return (
     <main 
