@@ -265,46 +265,40 @@ export default function Dashboard() {
 
     const { error } = await supabase.from('requests').upsert(updates);
     if (error) console.error("Reorder failed", error);
-  };
+  };  
 
-  // --- 1. ROBUST PLAY HANDLER ---
-  const handlePlayRequest = useCallback((req, arg2) => {
-    // Basic Setup: Load the song
-    setVideoModalId(req.youtube_video_id);
-    setCurrentPlayingRequest(req);
-    setPlayingRequestId(req.id);
+  const handlePlayRequest = useCallback((req, options) => {
+      // 1. Basic Setup
+      setVideoModalId(req.youtube_video_id);
+      setCurrentPlayingRequest(req);
+      setPlayingRequestId(req.id);
 
-    // INTELLIGENT CHECK:
-    // If arg2 is an object like { autoplay: true }, it's the system playing the next song.
-    // If arg2 is a boolean (true/false) or undefined, it's YOU clicking the list.
-    const isSystemAutoplay = typeof arg2 === 'object' && arg2?.autoplay === true;
+      // 2. CHECK: Is this a System Autoplay or a Manual Click?
+      // We check if 'options' is specifically the object { autoplay: true }
+      // We IGNORE simple booleans (like 'true') sent by RequestList
+      const isSystemAutoplay = typeof options === 'object' && options?.autoplay === true;
 
-    if (isSystemAutoplay) {
-      // SCENARIO: Song finished, next one is starting automatically.
-      // ACTION: Respect the DJ's current setup. If minimized, stay minimized.
-      setAutoPlay(true);
-    } else {
-      // SCENARIO: You clicked a song manually.
-      // ACTION: Force the player to OPEN so you can see what you just clicked.
-      setAutoPlay(false);
-      setIsMinimized(false); 
-    }
-  }, []);
+      if (isSystemAutoplay) {
+        // It's the system playing the next song -> Keep current minimized state
+        setAutoPlay(true);
+      } else {
+        // It's YOU clicking the song -> Force player to OPEN
+        setAutoPlay(false);
+        setIsMinimized(false);
+      }
+    }, []);
 
   // --- 2. UPDATED NEXT SONG LOGIC ---
   const handleNextSong = useCallback(() => {
-    if (!nextSong) return;
+      if (!nextSong) return;
 
-    // Logic: Only move to "Played" if it was strictly in the "Approved" tab
-    // (This keeps your Pending requests safe if you are just previewing them)
-    if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
-      handleUpdateStatus(currentPlayingRequest.id, "played");
-    }
+      if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
+        handleUpdateStatus(currentPlayingRequest.id, "played");
+      }
 
-    // TRIGGER: We pass a specific OBJECT now. 
-    // This tells the function above: "This is a System Autoplay"
-    handlePlayRequest(nextSong, { autoplay: true });
-  }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
+      // FIX: Send a specific object so handlePlayRequest knows it's automatic
+      handlePlayRequest(nextSong, { autoplay: true });
+    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
     
   return (
     <main 
