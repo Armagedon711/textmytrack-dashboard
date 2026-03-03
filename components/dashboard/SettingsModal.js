@@ -146,7 +146,7 @@ export default function SettingsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
        <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
        
-       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[600px] max-h-[90vh]">
+       <div className="relative w-full max-w-4xl bg-[#12121a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[90vh] md:h-[80vh] max-h-[90vh] md:max-h-[85vh]">
          
          {/* SIDEBAR */}
          <div className="w-full md:w-64 bg-[#16161f] border-b md:border-b-0 md:border-r border-white/5 flex flex-col shrink-0">

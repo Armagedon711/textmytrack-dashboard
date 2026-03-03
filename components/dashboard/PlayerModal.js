@@ -236,7 +236,7 @@ export default function PlayerModal({
       className={`fixed z-50 transition-all duration-300 ${
         isMinimized
           ? "bottom-0 left-0 w-full pointer-events-auto" 
-          : "inset-0 flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm bg-black/60" 
+          : "inset-0 flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm bg-black/60"
       }`}
       onClick={!isMinimized ? onMinimize : undefined}
     >
@@ -244,14 +244,14 @@ export default function PlayerModal({
         className={`relative bg-[#12121a] shadow-2xl border-t sm:border border-white/5 overflow-hidden flex flex-col ${
           isMinimized 
             ? "h-auto rounded-t-xl rounded-b-none w-full"
-            : "w-full sm:max-w-4xl h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl ring-1 ring-white/10"
+            : "w-full sm:max-w-4xl h-auto max-h-[90vh] sm:max-h-[85vh] sm:rounded-2xl ring-1 ring-white/10"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* PLAYER AREA */}
         <div className={`w-full bg-black relative transition-all duration-300 ${
-            isMinimized ? "h-0 opacity-0 pointer-events-none" : "aspect-video flex-shrink-0"
+            isMinimized ? "h-0 opacity-0 pointer-events-none" : "h-[40vh] sm:aspect-video flex-shrink-0"
         }`}>
             <div id={PLAYER_ID} className="w-full h-full" />
         </div>
