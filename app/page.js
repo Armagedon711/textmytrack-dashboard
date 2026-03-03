@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone } from "lucide-react";
+import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone, SlidersHorizontal } from "lucide-react";
 import { DragDropContext } from "@hello-pangea/dnd"; 
 
 // Components (Using @/ alias for safety)
@@ -12,7 +12,8 @@ import RequestList from "@/components/dashboard/RequestList";
 import StatsSidebar from "@/components/dashboard/StatsSidebar";
 import SettingsModal from "@/components/dashboard/SettingsModal";
 import LiveChat from "@/components/dashboard/LiveChat"; 
-import AddSongModal from "@/components/dashboard/AddSongModal"; 
+import AddSongModal from "@/components/dashboard/AddSongModal";
+import QueueConfigModal from "@/components/dashboard/QueueConfigModal";
 
 // Constants
 const UNIVERSAL_NUMBER = "(855) 710-5533";
@@ -58,8 +59,9 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState("pending");
   const [selectedPlatform, setSelectedPlatform] = useState("youtube");
   const [showSettings, setShowSettings] = useState(false);
-  const [showAddSong, setShowAddSong] = useState(false); 
-  const [isChatExpanded, setIsChatExpanded] = useState(false); 
+  const [showAddSong, setShowAddSong] = useState(false);
+  const [showQueueConfig, setShowQueueConfig] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
 
   // Player State
   const [videoModalId, setVideoModalId] = useState(null); 
@@ -217,17 +219,35 @@ export default function Dashboard() {
         (payload) => {
           const normalizedNew = normalizeRequestStatus(payload.new);
           if (payload.eventType === "INSERT") {
-            setRequests(prev => [...prev, normalizedNew]); 
-          }
-          else if (payload.eventType === "UPDATE") {
+            setRequests(prev => {
+              let next = [...prev, normalizedNew];
+              if (djProfile?.auto_delete_duplicates) {
+                const scope = djProfile.duplicate_scope || "both";
+                const statuses = scope === "requests" ? ["pending"] : scope === "approved" ? ["approved"] : ["pending", "approved"];
+                const inScope = next.filter(r => statuses.includes(r.status));
+                const key = (normalizedNew.youtube_video_id || "").trim() || `${(normalizedNew.title || "").trim()}|${(normalizedNew.artist || "").trim()}`;
+                const isDup = inScope.some(r => r.id !== normalizedNew.id && (((r.youtube_video_id || "").trim() || `${(r.title || "").trim()}|${(r.artist || "").trim()}`) === key));
+                if (isDup) {
+                  fetch("/api/requests-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id }) });
+                  return prev;
+                }
+              }
+              if (djProfile?.auto_reject_explicit && normalizedNew.explicit === "Explicit") {
+                fetch("/api/update-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id, status: "rejected" }) });
+                next = next.map(r => r.id === normalizedNew.id ? { ...normalizedNew, status: "rejected" } : r);
+              }
+              return next;
+            });
+          } else if (payload.eventType === "UPDATE") {
             setRequests(prev => prev.map(r => r.id === payload.new.id ? normalizedNew : r));
+          } else if (payload.eventType === "DELETE") {
+            setRequests(prev => prev.filter(r => r.id !== payload.old.id));
           }
-          else if (payload.eventType === "DELETE") setRequests(prev => prev.filter(r => r.id !== payload.old.id));
         }
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [user]);
+  }, [user, djProfile?.auto_delete_duplicates, djProfile?.duplicate_scope, djProfile?.auto_reject_explicit]);
 
   // --- Fallback Polling (Helps Mobile Stay Fresh) ---
   useEffect(() => {
@@ -405,6 +425,27 @@ export default function Dashboard() {
         isOpen={showAddSong}
         onClose={() => setShowAddSong(false)}
         djId={user?.id}
+      />
+
+      <QueueConfigModal
+        isOpen={showQueueConfig}
+        onClose={() => setShowQueueConfig(false)}
+        djProfile={djProfile}
+        onSave={async (settings) => {
+          setDjProfile(prev => prev ? { ...prev, ...settings } : prev);
+          if (settings.auto_delete_duplicates) {
+            const res = await fetch("/api/dedup-requests", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dj_id: user?.id, scope: settings.duplicate_scope || "both" }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.removed > 0) {
+              const { data: reqs } = await supabase.from("requests").select("*").eq("dj_id", user.id).order("position", { ascending: true });
+              if (reqs) setRequests(reqs.map(normalizeRequestStatus));
+            }
+          }
+        }}
       />
 
       <PlayerModal 
@@ -587,19 +628,29 @@ export default function Dashboard() {
                     ))}
                 </div>
 
-                {/* Fixed "Clear All" Button */}
-                <button 
-                  onClick={clearAllFiltered} 
-                  disabled={filteredRequests.length === 0}
-                  className={`flex-shrink-0 p-2.5 rounded-xl transition-colors border ${
-                    filteredRequests.length > 0 
-                      ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' 
-                      : 'bg-white/5 border-transparent text-gray-600 pointer-events-none' 
-                  }`}
-                  title="Clear List"
-                >
-                  <Trash2 size={18} />
-                </button>
+                {/* Queue config + Clear All */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowQueueConfig(true)}
+                    className="p-2.5 rounded-xl border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+                    title="Queue & request rules"
+                  >
+                    <SlidersHorizontal size={18} />
+                  </button>
+                  <button 
+                    onClick={clearAllFiltered} 
+                    disabled={filteredRequests.length === 0}
+                    className={`p-2.5 rounded-xl transition-colors border ${
+                      filteredRequests.length > 0 
+                        ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' 
+                        : 'bg-white/5 border-transparent text-gray-600 pointer-events-none' 
+                    }`}
+                    title="Clear List"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
              </div>
 
             <DragDropContext onDragEnd={handleOnDragEnd}>
