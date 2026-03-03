@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { X, Search, Plus, Disc3, Loader2 } from "lucide-react";
+import { X, Search, Plus, Disc3, Loader2, ListMusic } from "lucide-react";
 
 export default function AddSongModal({ isOpen, onClose, djId }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
 
   if (!isOpen) return null;
 
@@ -12,25 +13,31 @@ export default function AddSongModal({ isOpen, onClose, djId }) {
     if (!query.trim()) return;
 
     setLoading(true);
+    setStatusMsg("");
 
     try {
-      // REPLACE THIS URL with the "Production URL" from the new n8n workflow
-      const N8N_WEBHOOK_URL = "https://n8n.theprotoforge.com/webhook/manual-add"; 
-
-      await fetch(N8N_WEBHOOK_URL, {
+      const res = await fetch("/api/add-song", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            query: query, 
-            dj_id: djId,
-            source: "dashboard"
-        }),
+        body: JSON.stringify({ query: query.trim(), dj_id: djId }),
       });
-      
-      setQuery("");
-      onClose();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setStatusMsg(data.error || "Failed to add. Try again.");
+        return;
+      }
+
+      if (data.mode === "playlist" && data.added) {
+        setStatusMsg(`Added ${data.added} songs from playlist.`);
+        setQuery("");
+        setTimeout(() => { onClose(); setStatusMsg(""); }, 1500);
+      } else {
+        setQuery("");
+        onClose();
+      }
     } catch (error) {
-      alert("Failed to add song. Check console.");
+      setStatusMsg("Something went wrong. Try again.");
       console.error(error);
     } finally {
       setLoading(false);
@@ -63,26 +70,35 @@ export default function AddSongModal({ isOpen, onClose, djId }) {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Song / Artist</label>
+              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">Song, artist, or playlist</label>
               <div className="relative">
                   <input 
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="e.g. Bohemian Rhapsody..."
+                    placeholder="e.g. Bohemian Rhapsody or a YouTube playlist URL"
                     className="w-full bg-[#0a0a0f] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-600 outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all"
                   />
                   <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               </div>
+              <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
+                <ListMusic size={12} /> Paste a YouTube playlist link to add all songs.
+              </p>
            </div>
 
+           {statusMsg && (
+             <div className={`text-sm rounded-xl px-3 py-2 ${statusMsg.startsWith("Added") ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+               {statusMsg}
+             </div>
+           )}
+
            <button 
-             type="disabled" 
+             type="submit" 
              disabled={loading || !query.trim()}
              className="w-full py-3 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
            >
              {loading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-             {loading ? "Searching & Adding..." : "Add to Queue"}
+             {loading ? "Adding..." : "Add to Queue"}
            </button>
         </form>
       </div>
