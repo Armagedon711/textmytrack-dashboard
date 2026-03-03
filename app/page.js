@@ -70,11 +70,30 @@ export default function Dashboard() {
 
   // --- Derived State ---
   const normalizeRequestStatus = (request) => {
+    if (!request) return request;
+
+    const status = request.status;
+
     // Ensure manually added songs from the dashboard appear in the Requests tab (pending),
-    // even if the backend inserts them as approved by default.
-    if (request?.source === "dashboard" && request?.status === "approved") {
+    // even if the backend or workflow inserts them as approved by default.
+    const possibleDashboardSource =
+      request.source ||
+      request.request_source ||
+      request.origin ||
+      request.created_from;
+
+    const looksLikeDashboard =
+      typeof possibleDashboardSource === "string" &&
+      possibleDashboardSource.toLowerCase().includes("dashboard");
+
+    const looksLikeManual =
+      !request.requestedBy || // No phone / requester info
+      !request.requestedAt;   // No timestamp (common for manual inserts)
+
+    if (status === "approved" && (looksLikeDashboard || looksLikeManual)) {
       return { ...request, status: "pending" };
     }
+
     return request;
   };
 
