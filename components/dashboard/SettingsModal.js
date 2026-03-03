@@ -116,7 +116,12 @@ export default function SettingsModal({
   const handleResetPassword = async () => {
       if (!user?.email) return;
       setResetLoading(true);
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: `${window.location.origin}/update-password` });
+      const siteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${siteUrl}/update-password`,
+      });
       if (error) setStatus({ type: "error", msg: error.message });
       else setStatus({ type: "success", msg: "Password reset email sent!" });
       setResetLoading(false);
