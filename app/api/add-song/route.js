@@ -1,4 +1,6 @@
 export const runtime = "nodejs";
+// Ensure env vars are read at request time (not inlined at build)
+export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -90,13 +92,14 @@ export async function POST(req) {
 
     // --- Playlist: fetch from YouTube and insert each track ---
     if (playlistId) {
-      const apiKey =
-        process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
+      const raw =
+        process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || "";
+      const apiKey = typeof raw === "string" ? raw.trim() : "";
+      if (!apiKey || apiKey === "your_youtube_api_key_here") {
         return NextResponse.json(
           {
             error:
-              "Playlist import is not configured. Set YOUTUBE_API_KEY or GOOGLE_API_KEY in your environment.",
+              "Playlist import needs YOUTUBE_API_KEY in Vercel. Add it under Project → Settings → Environment Variables (exact name: YOUTUBE_API_KEY), then redeploy.",
           },
           { status: 503 }
         );
@@ -126,7 +129,7 @@ export async function POST(req) {
         .maybeSingle();
       const basePosition = (existing?.position ?? 0) + 1000;
       const now = new Date().toISOString();
-      const requestedBy = "Dashboard";
+      const requestedBy = "DJ Manual Add";
 
       const rows = tracks.map((t, i) => ({
         title: t.title,
