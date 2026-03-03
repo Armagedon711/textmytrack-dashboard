@@ -69,6 +69,15 @@ export default function Dashboard() {
   const [autoPlay, setAutoPlay] = useState(true);
 
   // --- Derived State ---
+  const normalizeRequestStatus = (request) => {
+    // Ensure manually added songs from the dashboard appear in the Requests tab (pending),
+    // even if the backend inserts them as approved by default.
+    if (request?.source === "dashboard" && request?.status === "approved") {
+      return { ...request, status: "pending" };
+    }
+    return request;
+  };
+
   const filteredRequests = useMemo(() => {
     let result = requests;
     if (filterStatus !== "all") {
@@ -140,7 +149,10 @@ export default function Dashboard() {
         .eq('dj_id', session.user.id)
         .order('position', { ascending: true });
       
-      if (reqs && mounted) setRequests(reqs);
+      if (reqs && mounted) {
+        // Normalize statuses so manually added songs show up as pending/Requests.
+        setRequests(reqs.map(normalizeRequestStatus));
+      }
       
       if (mounted) setLoading(false);
     };
@@ -172,8 +184,13 @@ export default function Dashboard() {
       .on("postgres_changes", 
         { event: "*", schema: "public", table: "requests", filter: `dj_id=eq.${user.id}` }, 
         (payload) => {
-          if (payload.eventType === "INSERT") setRequests(prev => [...prev, payload.new]); 
-          else if (payload.eventType === "UPDATE") setRequests(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
+          const normalizedNew = normalizeRequestStatus(payload.new);
+          if (payload.eventType === "INSERT") {
+            setRequests(prev => [...prev, normalizedNew]); 
+          }
+          else if (payload.eventType === "UPDATE") {
+            setRequests(prev => prev.map(r => r.id === payload.new.id ? normalizedNew : r));
+          }
           else if (payload.eventType === "DELETE") setRequests(prev => prev.filter(r => r.id !== payload.old.id));
         }
       )
