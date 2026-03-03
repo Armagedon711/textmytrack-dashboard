@@ -144,6 +144,18 @@ export default function Dashboard() {
     let mounted = true;
 
     const init = async () => {
+      // Handle Supabase password-recovery / magic links that land on "/"
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        const type = url.searchParams.get("type");
+
+        if (code && (!type || type === "recovery")) {
+          router.replace(`/update-password${window.location.search}`);
+          return;
+        }
+      }
+
       // 1. Initial Session Check
       const { data: { session }, error } = await supabase.auth.getSession();
       

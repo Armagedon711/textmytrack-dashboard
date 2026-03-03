@@ -19,10 +19,15 @@ export default function UpdatePasswordPage() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const type = url.searchParams.get("type");
-    if (type !== "recovery") {
+    const code = url.searchParams.get("code");
+
+    // Accept either:
+    // - ?type=recovery&code=...
+    // - ?code=...  (older / misconfigured links)
+    if (!code) {
       setStatus({
         type: "error",
-        msg: "This link is invalid or has expired. Please request a new password reset email.",
+        msg: "This reset link is invalid or has expired. Please request a new password reset email.",
       });
     }
     setTokenChecked(true);
