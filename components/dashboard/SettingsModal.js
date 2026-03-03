@@ -116,8 +116,10 @@ export default function SettingsModal({
   const handleResetPassword = async () => {
       if (!user?.email) return;
       setResetLoading(true);
+      // Always use production dashboard for reset link so the email never points to localhost
       const siteUrl =
-        process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        "https://dashboard.textmytrack.com";
 
       const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
         redirectTo: `${siteUrl}/update-password`,
