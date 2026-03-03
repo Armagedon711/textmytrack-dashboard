@@ -217,6 +217,28 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel);
   }, [user]);
 
+  // --- Fallback Polling (Helps Mobile Stay Fresh) ---
+  useEffect(() => {
+    if (!user) return;
+
+    const POLL_INTERVAL_MS = 10000; // 10s fallback polling
+
+    const run = async () => {
+      const { data: reqs, error } = await supabase
+        .from("requests")
+        .select("*")
+        .eq("dj_id", user.id)
+        .order("position", { ascending: true });
+
+      if (!error && reqs) {
+        setRequests(reqs.map(normalizeRequestStatus));
+      }
+    };
+
+    const id = setInterval(run, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [user]);
+
 
   // --- Actions ---
   const handleUpdateStatus = async (id, status) => {
