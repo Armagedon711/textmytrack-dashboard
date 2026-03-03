@@ -111,13 +111,13 @@ export default function QueueConfigModal({
               <button
                 type="button"
                 onClick={() => setAutoDeleteDuplicates(!autoDeleteDuplicates)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
+                className={`relative w-11 h-6 rounded-full transition-colors overflow-hidden ${
                   autoDeleteDuplicates ? "bg-pink-500" : "bg-white/10"
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                    autoDeleteDuplicates ? "translate-x-5" : "translate-x-1"
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
+                    autoDeleteDuplicates ? "left-6" : "left-1"
                   }`}
                 />
               </button>
@@ -161,13 +161,13 @@ export default function QueueConfigModal({
               <button
                 type="button"
                 onClick={() => setAutoRejectExplicit(!autoRejectExplicit)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
+                className={`relative w-11 h-6 rounded-full transition-colors overflow-hidden ${
                   autoRejectExplicit ? "bg-pink-500" : "bg-white/10"
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                    autoRejectExplicit ? "translate-x-5" : "translate-x-1"
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
+                    autoRejectExplicit ? "left-6" : "left-1"
                   }`}
                 />
               </button>
