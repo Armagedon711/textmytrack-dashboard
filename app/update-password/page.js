@@ -64,7 +64,7 @@ export default function UpdatePasswordPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] flex items-center justify-center px-6">
+    <main className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-md bg-[#141420cc] backdrop-blur-xl p-8 rounded-2xl border border-[#1e1e2d] shadow-glow">
         {/* Header */}
         <div className="flex flex-col items-center mb-6">

@@ -398,7 +398,6 @@ export default function Dashboard() {
     <main 
       className="
         h-screen overflow-y-scroll 
-        bg-[#0a0a0f] text-white bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#0a0a0f]
         [&::-webkit-scrollbar]:w-2
         [&::-webkit-scrollbar-track]:bg-[#0a0a0f]
         [&::-webkit-scrollbar-thumb]:bg-[#2a2a35]
@@ -406,11 +405,6 @@ export default function Dashboard() {
         hover:[&::-webkit-scrollbar-thumb]:bg-[#3a3a4a]
       "
     >
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
-      </div>
-
       <SettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)}
