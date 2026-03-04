@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { Disc3, Settings, LogOut, Trash2, MessageSquare, ChevronDown, ChevronUp, Power, ExternalLink, Plus, Phone, SlidersHorizontal } from "lucide-react";
@@ -119,27 +119,37 @@ export default function Dashboard() {
     requests.find(r => r.id === playingRequestId), 
   [requests, playingRequestId]);
 
-  // --- Next Song Logic ---
-    const nextSong = useMemo(() => {
-      if (!currentPlayingRequest) return null;
-      
-      // CHANGE: Use filteredRequests (the current tab) instead of hardcoding 'approved'
-      // This ensures we only queue songs visible in your current view
-      const queue = filteredRequests.filter(r => r.youtube_video_id);
-      
-      if (queue.length === 0) return null;
+  // Approved-only queue for robust advance (no tab/loop-to-self)
+  const approvedQueue = useMemo(
+    () =>
+      requests
+        .filter((r) => r.status === "approved" && r.youtube_video_id)
+        .sort((a, b) => (a.position || 0) - (b.position || 0)),
+    [requests]
+  );
 
-      const currentIndex = queue.findIndex(r => r.id === currentPlayingRequest.id);
-      
-      // If the current song isn't in the current tab (e.g., you just switched tabs), 
-      // start playing the first song available in this new view.
-      if (currentIndex === -1) return queue[0];
+  const getNextInApprovedQueue = useCallback(
+    (currentId) => {
+      if (!approvedQueue.length) return null;
+      const idx = approvedQueue.findIndex((r) => r.id === currentId);
+      if (idx === -1) return approvedQueue[0];
+      const next = approvedQueue[idx + 1];
+      return next || null;
+    },
+    [approvedQueue]
+  );
 
-      const next = queue[currentIndex + 1];
-      
-      // Return the next song in the tab, or loop back to the first song of this tab
-      return next || queue[0];
-    }, [filteredRequests, currentPlayingRequest]); // Added filteredRequests as a dependency
+  // For UI display: next in current tab (can show in player)
+  const nextSong = useMemo(() => {
+    if (!currentPlayingRequest) return null;
+    const queue = filteredRequests.filter((r) => r.youtube_video_id);
+    if (queue.length === 0) return null;
+    const currentIndex = queue.findIndex((r) => r.id === currentPlayingRequest.id);
+    if (currentIndex === -1) return queue[0];
+    return queue[currentIndex + 1] || queue[0];
+  }, [filteredRequests, currentPlayingRequest]);
+
+  const advancingRef = useRef(false);
 
   // --- Data Loading & Auth ---
   useEffect(() => {
@@ -228,12 +238,12 @@ export default function Dashboard() {
                 const key = (normalizedNew.youtube_video_id || "").trim() || `${(normalizedNew.title || "").trim()}|${(normalizedNew.artist || "").trim()}`;
                 const isDup = inScope.some(r => r.id !== normalizedNew.id && (((r.youtube_video_id || "").trim() || `${(r.title || "").trim()}|${(r.artist || "").trim()}`) === key));
                 if (isDup) {
-                  fetch("/api/requests-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id }) });
+                  fetch("/api/requests-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id, dj_id: user?.id }) });
                   return prev;
                 }
               }
               if (djProfile?.auto_reject_explicit && normalizedNew.explicit === "Explicit") {
-                fetch("/api/update-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id, status: "rejected" }) });
+                fetch("/api/update-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: normalizedNew.id, status: "rejected", dj_id: user?.id }) });
                 next = next.map(r => r.id === normalizedNew.id ? { ...normalizedNew, status: "rejected" } : r);
               }
               return next;
@@ -274,30 +284,38 @@ export default function Dashboard() {
 
   // --- Actions ---
   const handleUpdateStatus = async (id, status) => {
+    if (!user?.id) return;
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    await fetch("/api/update-request", { 
-       method: "POST", headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ id, status })
+    await fetch("/api/update-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status, dj_id: user.id }),
     });
   };
 
   const handleDelete = async (id) => {
-    if(!confirm("Delete request?")) return;
+    if (!user?.id) return;
+    if (!confirm("Delete request?")) return;
     setRequests(prev => prev.filter(r => r.id !== id));
     await fetch("/api/requests-delete", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, dj_id: user.id }),
     });
   };
 
   const clearAllFiltered = async () => {
-    if(!confirm(`Delete all ${filteredRequests.length} items?`)) return;
+    if (!user?.id) return;
+    if (!confirm(`Delete all ${filteredRequests.length} items?`)) return;
     const ids = filteredRequests.map(r => r.id);
     setRequests(prev => prev.filter(r => !ids.includes(r.id)));
-    ids.forEach(id => fetch("/api/requests-delete", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-    }));
+    ids.forEach(id =>
+      fetch("/api/requests-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, dj_id: user.id }),
+      })
+    );
   };
 
   const toggleAccepting = async () => {
@@ -379,20 +397,40 @@ export default function Dashboard() {
     }
   };
 
-  // In page.js
+  const advanceApprovedQueue = useCallback(async () => {
+    if (advancingRef.current) return;
+    const current = currentPlayingRequest;
+    if (!current) return;
 
-  const handleNextSong = useCallback(() => {
-      if (!nextSong) return;
-
-      // FIX: Only auto-mark as played if the song was already in the Approved tab.
-      if (currentPlayingRequest && currentPlayingRequest.status === "approved") {
-        handleUpdateStatus(currentPlayingRequest.id, "played");
+    advancingRef.current = true;
+    try {
+      if (current.status === "approved" && user?.id) {
+        await fetch("/api/mark-played", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: current.id, dj_id: user.id }),
+        });
+        setRequests((prev) =>
+          prev.map((r) => (r.id === current.id ? { ...r, status: "played" } : r))
+        );
       }
 
-      // Move to the next song in the current tab
-      // Pass 'true' as the 3rd argument to keep the player minimized if it currently is
-      handlePlayRequest(nextSong, true, true);
-    }, [nextSong, currentPlayingRequest, handleUpdateStatus, handlePlayRequest]);
+      const next = getNextInApprovedQueue(current.id);
+      if (!next) {
+        setVideoModalId(null);
+        setPlayingRequestId(null);
+        return;
+      }
+      handlePlayRequest(next, true, true);
+    } finally {
+      advancingRef.current = false;
+    }
+  }, [
+    currentPlayingRequest,
+    user?.id,
+    getNextInApprovedQueue,
+    handlePlayRequest,
+  ]);
     
   return (
     <main 
@@ -452,19 +490,22 @@ export default function Dashboard() {
         onClose={() => { setVideoModalId(null); setPlayingRequestId(null); }}
         onMinimize={() => setIsMinimized(true)}
         onMaximize={() => setIsMinimized(false)}
-        onToggleMute={() => setIsMuted(!isMuted)}
+        onToggleMute={() => setIsMuted((m) => !m)}
         onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
         onTogglePlay={() => {}} 
-        onSkip={handleNextSong}
+        onSkip={advanceApprovedQueue}
         onApprove={() => {
-            if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "approved");
-            handleNextSong();
+          if (currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "approved");
+          advanceApprovedQueue();
         }}
         onMarkPlayed={() => {
-            if(currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
-            setVideoModalId(null);
+          if (currentPlayingRequest) handleUpdateStatus(currentPlayingRequest.id, "played");
+          setVideoModalId(null);
         }}
-        onVideoEnd={handleNextSong}
+        onReject={(id) => {
+          if (id) handleUpdateStatus(id, "rejected");
+        }}
+        onVideoEnd={advanceApprovedQueue}
       />
 
       {/* Main Container */}

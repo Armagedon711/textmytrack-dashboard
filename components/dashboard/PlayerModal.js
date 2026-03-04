@@ -36,6 +36,7 @@ export default function PlayerModal({
   onSkip,
   onApprove,
   onMarkPlayed,
+  onReject,
   onVideoEnd,
 }) {
   const playerRef = useRef(null);
@@ -58,19 +59,6 @@ export default function PlayerModal({
   useEffect(() => {
     loadYoutubeScript();
   }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-        if (playerRef.current && typeof playerRef.current.isMuted === 'function') {
-            const playerMuted = playerRef.current.isMuted();
-            if (playerMuted !== isMuted) {
-                onToggleMute();
-            }
-        }
-    }, 500); 
-
-    return () => clearInterval(interval);
-  }, [isMuted, onToggleMute]);
 
   useEffect(() => {
     if (isLocked) {
@@ -214,8 +202,8 @@ export default function PlayerModal({
   };
   
   const handleReject = () => {
-    alert(`Rejecting request ID: ${request.id}`);
-    onSkip();
+    if (request?.id) onReject?.(request.id);
+    onSkip?.();
   };
   
   const toggleLock = (e) => {

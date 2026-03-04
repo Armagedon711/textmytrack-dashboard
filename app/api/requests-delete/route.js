@@ -1,24 +1,11 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-// ---------- ADMIN CLIENT ----------
-let supabaseAdmin = null;
-
-if (
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-) {
-  supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
-
-// ---------- POST - Delete Request ----------
 export async function POST(request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
       return NextResponse.json(
         { error: "Supabase admin not initialized" },
@@ -27,7 +14,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { id } = body;
+    const { id, dj_id } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -35,12 +22,31 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+    if (!dj_id) {
+      return NextResponse.json(
+        { error: "Missing dj_id (unauthorized)" },
+        { status: 401 }
+      );
+    }
 
-    // Delete the request from the database
+    const { data: row, error: fetchError } = await supabaseAdmin
+      .from("requests")
+      .select("id, dj_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError || !row) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+    if (row.dj_id !== dj_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { error } = await supabaseAdmin
       .from("requests")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("dj_id", dj_id);
 
     if (error) {
       console.error("Error deleting request:", error);

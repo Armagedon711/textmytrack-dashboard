@@ -1,23 +1,13 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-// ---------- ADMIN CLIENT ----------
-let supabaseAdmin = null;
-
-if (
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-) {
-  supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
+const validStatuses = ["pending", "approved", "played", "rejected"];
 
 export async function POST(req) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
       return NextResponse.json(
         { error: "Supabase admin not initialized" },
@@ -26,7 +16,7 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { id, status } = body;
+    const { id, status, dj_id } = body;
 
     if (!id || !status) {
       return NextResponse.json(
@@ -34,9 +24,12 @@ export async function POST(req) {
         { status: 400 }
       );
     }
-    
-    // Basic status validation
-    const validStatuses = ["pending", "approved", "played", "rejected"];
+    if (!dj_id) {
+      return NextResponse.json(
+        { error: "Missing dj_id (unauthorized)" },
+        { status: 401 }
+      );
+    }
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
         { error: "Invalid status" },
@@ -44,10 +37,24 @@ export async function POST(req) {
       );
     }
 
-    const { error } = await supabaseAdmin // Using the Admin Client
+    const { data: row, error: fetchError } = await supabaseAdmin
+      .from("requests")
+      .select("id, dj_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError || !row) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+    if (row.dj_id !== dj_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { error } = await supabaseAdmin
       .from("requests")
       .update({ status })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("dj_id", dj_id);
 
     if (error) {
       console.error("Error updating request:", error);
