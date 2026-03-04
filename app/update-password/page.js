@@ -64,8 +64,9 @@ export default function UpdatePasswordPage() {
   };
 
   return (
-    <main className="min-h-[100dvh] min-h-screen flex items-center justify-center px-6 py-6 overflow-y-auto">
-      <div className="w-full max-w-md flex-shrink-0 bg-[#141420cc] backdrop-blur-xl p-8 rounded-2xl border border-[#1e1e2d] shadow-glow">
+    <main className="h-[100dvh] min-h-screen overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center px-6 py-6">
+        <div className="w-full max-w-md flex-shrink-0 bg-[#141420cc] backdrop-blur-xl p-8 rounded-2xl border border-[#1e1e2d] shadow-glow">
         {/* Header */}
         <div className="flex flex-col items-center mb-6">
           <Lock size={40} className="text-[#4da3ff] drop-shadow-glow" />
@@ -138,6 +139,7 @@ export default function UpdatePasswordPage() {
             Back to login
           </a>
         </p>
+        </div>
       </div>
     </main>
   );
