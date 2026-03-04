@@ -32,7 +32,7 @@ export default function RootLayout({
           <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full bg-purple-500/10 blur-[200px] transform -translate-x-1/2 -translate-y-1/2" />
           <div className="absolute bottom-0 right-0 w-[800px] h-[800px] rounded-full bg-pink-500/10 blur-[200px] transform translate-x-1/2 translate-y-1/2" />
         </div>
-        <div className="relative min-h-screen">{children}</div>
+        <div className="relative min-h-[100dvh] min-h-screen">{children}</div>
       </body>
     </html>
   );
